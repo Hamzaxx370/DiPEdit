@@ -59,10 +59,6 @@ std::vector<ctex_ref> read_ogre_tex_file ( const char* filename ) {
     std::vector<ctex_ref> names;
 
     int TextureCount = bin_help.read_uint ( );
-    if ( TextureCount > 1 )
-    {
-        throw std::runtime_error ( "Unsupported format, multiple textures" );
-    }
     bin_help.seek ( 0x20 );
     for ( unsigned int i = 0; i < TextureCount; ++i ) {
         std::string name = std::string ( filename ) + "_" + std::to_string ( i );
@@ -160,7 +156,7 @@ std::vector<ctex_ref> read_ogre_tex_file ( const char* filename ) {
         }
         else
         {
-            throw std::runtime_error ( "Unsupported buffer format" );
+            printf ( "Unsupported buffer format" );
         }
 
         buffer->init_buffer ( );

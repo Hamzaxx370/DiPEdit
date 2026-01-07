@@ -155,12 +155,14 @@ static float s_top_bar_h = 0.0f;
 namespace fs = std::filesystem;
 
 cgame* cgame::instance = nullptr;
-int mot_num = 32;
 
 cgame::cgame ( ) {
 	m_particle_path = "PTCL_ALL_Y1";
 	m_got_folder = false;
 	m_is_y2 = false;
+    m_looped = false;
+    m_got_mot_folder = false;
+    m_motion_num = 32;
 }
 
 cgame::~cgame ( ) {
@@ -190,8 +192,6 @@ void cgame::init ( ) {
 
     ImGui_ImplGlfw_InitForOpenGL ( cengine::get ( )->render_man->get_window ( ), true );
     ImGui_ImplOpenGL3_Init ( "#version 330" );
-
-    m_looped = false;
 }
 
 void cgame::run ( )
@@ -212,15 +212,11 @@ void cgame::run ( )
         ImGuiFileDialog::Instance ( )->OpenDialog ( "ChoosePTCLFolder", "Choose a folder", nullptr );
     }
 
+    //if ( ImGui::Button ( "Open Motion Folder" ) ) {
+    //    ImGuiFileDialog::Instance ( )->OpenDialog ( "ChooseMotFolder", "Choose a folder", nullptr );
+    //}
+
     cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::particle_start );
-
-    if ( ImGui::Button ( "Play" ) ) {
-        if ( p ) {
-            p->create_blank ( );
-        }
-    };
-
-    ImGui::Checkbox ( "Loop", &m_looped );
 
     ImGui::Checkbox ( "Is Yakuza 2", &m_is_y2 );
 
@@ -228,6 +224,12 @@ void cgame::run ( )
         ImGui::Text ( "PTCL Files" );
 
         draw_ptcl_tree ( );
+    }
+
+    if ( m_got_mot_folder ) {
+        ImGui::Text ( "Motion Files" );
+
+        draw_mot_tree ( );
     }
 
     if ( ImGuiFileDialog::Instance ( )->Display ( "ChoosePTCLFolder" ) ) {
@@ -239,8 +241,39 @@ void cgame::run ( )
                 p->set_exec_flag ( e_act_exec::done );
             }
             m_got_folder = true;
+
+            m_mesh_list.clear ( );
+            m_tex_list.clear ( );
+
 			cengine::get ( )->mesh_man->clear_mesh ( );
             cengine::get ( )->tex_man->clear_tex ( );
+
+            for ( auto& entry : fs::directory_iterator ( m_particle_path ) )
+            {
+                if ( entry.path ( ).extension ( ).string ( ) == ".OME" ) {
+                    int index = std::stoi ( entry.path ( ).stem ( ).string ( ) );
+
+                    if ( m_mesh_list.size ( ) <= index ) m_mesh_list.resize ( index + 1 );
+
+                    m_mesh_list [ index ] = read_ogre_mesh_file ( entry.path ( ).string ( ).c_str ( ), 2, "Shaders\\vertex_general.glsl",
+                        "Shaders\\fragment_particle.glsl" );
+                }
+                else if ( entry.path ( ).extension ( ).string ( ) == ".TXB" ) {
+                    int index = std::stoi ( entry.path ( ).stem ( ).string ( ) );
+
+                    if ( m_tex_list.size ( ) <= index ) m_tex_list.resize ( index + 1 );
+
+                    m_tex_list [ index ] = read_ogre_tex_file ( entry.path ( ).string ( ).c_str ( ) );
+                }
+            }
+        }
+        ImGuiFileDialog::Instance ( )->Close ( );
+    }
+
+    if ( ImGuiFileDialog::Instance ( )->Display ( "ChooseMotFolder" ) ) {
+        if ( ImGuiFileDialog::Instance ( )->IsOk ( ) ) {
+            m_motion_path = ImGuiFileDialog::Instance ( )->GetCurrentPath ( );
+            m_got_mot_folder = true;
         }
         ImGuiFileDialog::Instance ( )->Close ( );
     }
@@ -764,6 +797,68 @@ static void draw_param_curve_editor (
     }
 }
 
+static void texture_tooltip ( ctex_buffer* tex )
+{
+    if ( !tex || !tex->m_tex )
+        return;
+
+    float max_size = 256.0f;
+    float w = ( float ) tex->m_width;
+    float h = ( float ) tex->m_height;
+
+    float scale = 1.0f;
+    if ( w > max_size || h > max_size )
+        scale = max_size / glm::max ( w, h );
+
+    ImGui::BeginTooltip ( );
+    ImGui::Image (
+        ( ImTextureID ) tex->m_tex,
+        ImVec2 ( w * scale, h * scale ),
+        ImVec2 ( 0, 1 ),
+        ImVec2 ( 1, 0 )
+    );
+    ImGui::Text ( "%dx%d", tex->m_width, tex->m_height );
+    ImGui::EndTooltip ( );
+}
+
+
+void draw_texture_selector (
+    int& selected_tex_id,
+    std::vector<std::vector<ctex_ref>> tex_list )
+{
+    const char* preview =
+        ( selected_tex_id >= 0 && selected_tex_id < ( int ) tex_list.size ( ) )
+        ? std::to_string ( selected_tex_id ).c_str ( )
+        : "<none>";
+
+    if ( ImGui::BeginCombo ( "Texture", preview ) )
+    {
+        for ( int i = 0; i < ( int ) tex_list.size ( ); i++ )
+        {
+            if ( tex_list [ i ].empty ( ) )
+                continue;
+
+            bool is_selected = ( i == selected_tex_id );
+
+            ImGui::Selectable (
+                ( "Texture " + std::to_string ( i ) ).c_str ( ),
+                is_selected
+            );
+
+            if ( ImGui::IsItemHovered ( ) )
+            {
+                selected_tex_id = i;
+                texture_tooltip ( tex_list [ i ][ 0 ].get ( ) );
+            }
+
+            if ( is_selected )
+                ImGui::SetItemDefaultFocus ( );
+        }
+
+        ImGui::EndCombo ( );
+    }
+}
+
 
 void cgame::draw_ptcl_data ( ) {
     cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::particle_start );
@@ -778,6 +873,16 @@ void cgame::draw_ptcl_data ( ) {
     ImGui::SetNextWindowSize ( ImVec2 ( s_right_panel_w, viewport->WorkSize.y ) );
 
     ImGui::Begin ( "Particle Editor" );
+
+    if ( ImGui::Button ( "Play" ) ) {
+        if ( p ) {
+            p->create_blank ( );
+        }
+    };
+
+    ImGui::SameLine ( );
+
+    ImGui::Checkbox ( "Loop", &m_looped );
 
     if ( ImGui::CollapsingHeader ( "Particle Info", ImGuiTreeNodeFlags_DefaultOpen ) ) {
         InputString ( "Name", &ptcl_data->m_name );
@@ -845,7 +950,12 @@ void cgame::draw_ptcl_data ( ) {
                         ImGui::InputInt ( "Vertex Type", &e_param.m_vertex_type );
                         ImGui::DragInt ( "Unk Angle", &e_param.m_unknown4 );
                         ImGui::InputInt ( "Model ID", &e_param.m_model_id );
-                        ImGui::InputInt ( "Texture ID", &e_param.m_texture_id );
+
+                        draw_texture_selector (
+                            e_param.m_texture_id,
+                            m_tex_list
+                        );
+                        
                         ImGui::InputFloat ( "Time Scale", &e_param.m_time_scale );
                         ImGui::InputFloat ( "Generate Rate", &e_param.m_frame_rate );
 
@@ -961,4 +1071,95 @@ void cgame::draw_ptcl_data ( ) {
     }
 
     ImGui::End ( );
+}
+
+static bool parse_motion_number ( const std::string& name, int& out_num )
+{
+    // Expected: 0-<number>.dat
+    if ( !name.starts_with ( "0-" ) || !name.ends_with ( ".dat" ) )
+        return false;
+
+    try {
+        out_num = std::stoi ( name.substr ( 2, name.size ( ) - 6 ) );
+        return true;
+    }
+    catch ( ... ) {
+        return false;
+    }
+}
+
+
+void cgame::draw_mot_tree ( )
+{
+    if ( !fs::exists ( m_motion_path ) )
+        return;
+
+    if ( ImGui::TreeNodeEx ( m_motion_path.c_str ( ), ImGuiTreeNodeFlags_DefaultOpen ) )
+    {
+        for ( auto& entry : fs::directory_iterator ( m_motion_path ) )
+        {
+            if ( !entry.is_regular_file ( ) )
+                continue;
+
+            const std::string filename = entry.path ( ).filename ( ).string ( );
+
+            // ONLY files that start with "0-"
+            if ( filename.rfind ( "0-", 0 ) != 0 )
+                continue;
+
+            // Optional: still require .dat
+            if ( entry.path ( ).extension ( ) != ".dat" )
+                continue;
+
+            int mot_num = -1;
+
+            // Extract number after "0-"
+            try {
+                mot_num = std::stoi ( filename.substr ( 2, filename.size ( ) - 6 ) );
+            }
+            catch ( ... ) {
+                continue;
+            }
+
+            ImGuiTreeNodeFlags flags =
+                ImGuiTreeNodeFlags_Leaf |
+                ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+            if ( m_motion_num == mot_num )
+                flags |= ImGuiTreeNodeFlags_Selected;
+
+            ImGui::TreeNodeEx (
+                ( void* ) ( intptr_t ) mot_num,
+                flags,
+                "%d",
+                mot_num
+            );
+
+            if ( ImGui::IsItemClicked ( ) )
+            {
+                m_motion_num = mot_num;
+
+                cact_dummy* d =
+                    ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
+
+                if ( d ) {
+                    d->set_exec_flag ( e_act_exec::pause );
+                    d->set_exec_flag ( e_act_exec::done );
+                }
+                else {
+                    new cact_dummy (
+                        cengine::get ( )->act_man->get_actor ( e_actid::root ),
+                        e_actid::dummy,
+                        m_motion_num
+                    );
+                }
+            }
+        }
+
+        ImGui::TreePop ( );
+    }
+}
+
+void cgame::draw_mot_data ( ) {
+
 }

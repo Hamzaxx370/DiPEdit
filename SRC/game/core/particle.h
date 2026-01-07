@@ -197,6 +197,11 @@ public:
     bool is_finished ( ) { return ( m_current_life > m_life_time ); };
 };
 
+enum class e_emitter_flag : int {
+    none = 0,
+    follow = 1 << 0
+};
+
 class cparticle_emitter {
 public:
     // File data
@@ -213,6 +218,9 @@ public:
     glm::vec3 m_pos;
     glm::vec3 m_normal;
     glm::vec3 m_tmp0;
+
+    int m_flags = 0;
+    float m_speed = 1.0f;
 
     glm::vec3 m_vertex;
 
@@ -249,6 +257,10 @@ public:
         glm::vec3 tmp0,
         sparticle_random_param random_param
     );
+
+    bool check_flag ( e_emitter_flag flag ) {
+        return ( m_flags & ( int ) flag );
+    }
 };
 
 class cparticle {
@@ -287,6 +299,26 @@ public:
             m_emitter [ i ].m_pos = data.m_pos;
             m_emitter [ i ].m_normal = data.m_normal;
             m_emitter [ i ].m_tmp0 = data.m_tmp0;
+        }
+    }
+
+    void set_emitter_flag ( e_emitter_flag flag ) {
+        if ( !m_emitter ) {
+            return;
+        }
+
+        for ( int i = 0; i < m_gen_num; i++ ) {
+            m_emitter [ i ].m_flags |= ( int ) flag;
+        }
+    }
+
+    void set_speed ( float speed ) {
+        if ( !m_emitter ) {
+            return;
+        }
+
+        for ( int i = 0; i < m_gen_num; i++ ) {
+            m_emitter [ i ].m_speed = speed;
         }
     }
 };

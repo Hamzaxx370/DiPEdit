@@ -213,15 +213,13 @@ bool cparticle::initialize ( sparticle_param param, sparticle_data data, glm::ve
     int mdl_id = m_param.m_emitter_param.m_model_id;
     int tex_id = m_param.m_emitter_param.m_texture_id;
 
-    m_meshes = read_ogre_mesh_file (
-        ( cgame::get ( )->m_particle_path + "\\" + std::to_string ( mdl_id ) + ".OME" ).c_str ( ),
-        2,
-        "Shaders\\vertex_general.glsl",
-        "Shaders\\fragment_particle.glsl" );
+    if ( mdl_id == -1 || tex_id == -1 ) return false;
+
+    m_meshes = cgame::get ( )->m_mesh_list [ mdl_id ];
 
     for ( auto& mesh : m_meshes ) {
         cmesh_buffer* m = mesh.get ( );
-        m->m_used_tex = read_ogre_tex_file ( ( cgame::get ( )->m_particle_path + "\\" + std::to_string ( tex_id ) + ".TXB" ).c_str ( ) );
+        m->m_used_tex = cgame::get ( )->m_tex_list [ tex_id ];
     }
 
     return true;
@@ -338,8 +336,9 @@ void cparticle_emitter::execute ( ) {
     if ( m_finished ) return;
 
     float dt = cengine::get ( )->render_man->get_delta ( ) / FRAME_SPD;
+    dt *= m_speed;
     
-    // Apply time scaling (from decompilation analysis)
+    // Apply time scaling
     float scaled_dt = dt;
 
     // Delay gate
@@ -360,39 +359,26 @@ void cparticle_emitter::execute ( ) {
 
                 // 3. Spawn new particles
                 for ( int i = 0; i < m_pool_size && spawn_count > 0; ++i ) {
-                    if ( m_output [ i ].m_life <= 0.0f ) { // Available slot
-                        // 1. Retrieve base parameters
+                    if ( m_output [ i ].m_life <= 0.0f ) {
                         float total_life = m_param.m_life_time;
                         float inv_speed_scale = m_param.m_inverse_speed;
 
-                        // 2. Generate the Random Phase
                         float rnd = frandom ( );
 
-                        // 3. Calculate 'initial_life' (The Random Start Offset)
-                        // Decomp: initial_life = (float)((double)(float)(dVar1 * rand_float) * unk_life);
                         float initial_life_offset = ( total_life * rnd ) * inv_speed_scale;
 
-                        // 4. Calculate 'unk_life' (The Compensated Chain Duration)
-                        // Decomp: unk_life = -(double)(float)(dVar1 * unk_life - (double)(float)(dVar1 + (double)(initial_life + initial_life)));
-                        // Logic: (Total + 2*Offset) - (Total * InvSpeed)
                         float chain_life_duration = ( total_life + 2.0f * initial_life_offset ) - ( total_life * inv_speed_scale );
 
-                        // 5. Calculate 'chain_param' (The Playback Speed Factor)
-                        // Decomp: chain_param = (double)(float)(dVar1 * (double)(float)(rand_float / unk_life));
-                        // Note: If chain_life_duration is 0 (rare edge case), prevent division by zero.
                         float chain_speed_param = 1.0f;
                         if ( abs ( chain_life_duration ) > 0.0001f ) {
                             chain_speed_param = total_life * ( rnd / chain_life_duration );
                         }
 
-                        // Initialize particle with full life
                         init_particle_output ( m_param.m_vertex_param, &m_output [ i ] );
                         m_output [ i ].m_life = m_param.m_life_time;
 
-                        // Create matrix + random parameters
                         m_matrix [ i ] = create_matrix ( m_random_param [ i ] );
 
-                        // Build element chain
                         cparticle_element* head = nullptr;
                         cparticle_element* prev = nullptr;
 
@@ -407,13 +393,13 @@ void cparticle_emitter::execute ( ) {
 
                             if ( !head ) {
                                 head = elem;
-                                elem->m_time_scale = chain_speed_param;
-                                elem->m_life_time = chain_life_duration;
-                                elem->m_end_time = chain_life_duration * elem->m_params [ 0 ].m_end_time_scaled;
                             }
-                            else if ( prev ) {
-                                head->create_chain ( elem, chain_life_duration, chain_speed_param );
+                            else {
+                                prev->m_next = elem;
                             }
+                            elem->m_time_scale = chain_speed_param;
+                            elem->m_life_time = chain_life_duration;
+                            elem->m_end_time = chain_life_duration * elem->m_params [ 0 ].m_end_time_scaled;
                             prev = elem;
                         }
 
@@ -434,8 +420,8 @@ void cparticle_emitter::execute ( ) {
                             m_param.m_unknown4
                         );
 
-                        final_elem->m_life_time = m_param.m_life_time;
-                        final_elem->m_end_time = m_param.m_life_time;
+                        final_elem->m_life_time = total_life;
+                        final_elem->m_end_time = total_life * final_elem->m_params [ 0 ].m_end_time_scaled;
                         final_elem->m_time_scale = 1.0f;
                         final_elem->m_current_life = 0.0f;
 
@@ -472,8 +458,13 @@ void cparticle_emitter::execute ( ) {
 
             // If still alive, update element chain
             if ( m_output [ i ].m_life > 0.0f && !m_output_chains [ i ]->is_finished ( ) ) {
+                
                 m_output_chains [ i ]->execute ( scaled_dt );
                 m_output_chains [ i ]->output ( &m_output [ i ], m_param.m_vertex_param );
+
+                if ( check_flag ( e_emitter_flag::follow ) ) {
+                    m_matrix [ i ] = set_matrix ( m_particle_param, m_pos, m_normal, m_tmp0, m_random_param [ i ] );
+                }
             }
             else {
                 // Particle died, mark as available
@@ -529,15 +520,6 @@ void cparticle_emitter::draw ( std::vector<cmesh_ref> meshes ) {
             if ( m_param.m_vertex_param.m_scale_flag != 2 ) {
                 o.m_scale = glm::vec4 ( o.m_scale.w );
             }
-
-            // Create final matrix
-            m_matrix [ i ] = set_matrix (
-                m_particle_param,
-                m_pos,
-                m_normal,
-                m_tmp0,
-                m_random_param [ i ]
-            );
 
             d.m_meshes = meshes;
             d.m_output = &o;
@@ -1085,7 +1067,7 @@ void cdraw_particle::draw ( ) {
     // Draw all meshes
     for ( auto& mref : m_meshes ) {
         cmesh_buffer* m = mref.get ( );
-        m->m_mdl = final;
+        m->m_mdl = final * glm::scale ( glm::mat4 ( 1.0f ), glm::vec3 ( 1.0f, 1.0f, -1.0f ) );
 
         // Update textures with particle color and UV
         for ( auto& tref : m->m_used_tex ) {

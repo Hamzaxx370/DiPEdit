@@ -48,7 +48,7 @@ crender_manager::crender_manager ( const char* title, int width, int height ) {
 	glfwWindowHint ( GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE );
 
 	// Create window
-	m_window = glfwCreateWindow ( width, height, title, NULL, NULL );
+	m_window = glfwCreateWindow ( width, height, m_title.c_str ( ), NULL, NULL );
 	glfwMakeContextCurrent ( m_window );
 	//glfwSwapInterval ( 1 );
 	gladLoadGL ( );

@@ -38,7 +38,7 @@ void get_pos ( cbinary_helper& bin_help, cskel_pos_key& keyframe, eKEYFRAME_TYPE
 {
 	keyframe.m_pos.x = bin_help.read_float ( );
 	keyframe.m_pos.y = bin_help.read_float ( );
-	keyframe.m_pos.z = bin_help.read_float ( );
+	keyframe.m_pos.z = -bin_help.read_float ( );
 }
 void get_rot ( cbinary_helper& bin_help, cskel_rot_key& keyframe, eKEYFRAME_TYPE type )
 {
@@ -66,8 +66,8 @@ void get_rot ( cbinary_helper& bin_help, cskel_rot_key& keyframe, eKEYFRAME_TYPE
 	double quat_normalized_y = ( quat_data_y / Magnitude );
 	double quat_normalized_z = ( quat_data_z / Magnitude );
 
-	glm::quat inverse = glm::quat ( quat_normalized_w, quat_normalized_x, quat_normalized_y, quat_normalized_z );
-	keyframe.m_rot = glm::quat ( -inverse.w, inverse.x, inverse.y, inverse.z );
+	glm::quat inverse = glm::quat ( -quat_normalized_w, -quat_normalized_x, -quat_normalized_y, quat_normalized_z );
+	keyframe.m_rot = glm::normalize ( inverse );
 }
 
 cskel_anim* read_ogre_motion ( const char* filename ) {
@@ -298,11 +298,17 @@ std::vector<ceffect_authoring> read_ogre_pmm ( const char* filename ) {
 		effect.m_speed = bin_help.read_float ( );
 		effect.m_bone_idx = bin_help.read_int ( );
 		bin_help.seek ( start + 32 );
-		effect.m_xyz = glm::vec3 ( bin_help.read_float ( ), bin_help.read_float ( ), bin_help.read_float ( ) );
+		effect.m_xyz.x = bin_help.read_float ( );
+		effect.m_xyz.y = bin_help.read_float ( );
+		effect.m_xyz.z = bin_help.read_float ( );
 		int type = bin_help.read_int ( );
-		effect.m_normal = glm::vec3 ( bin_help.read_float ( ), bin_help.read_float ( ), bin_help.read_float ( ) );
+		effect.m_normal.x = bin_help.read_float ( );
+		effect.m_normal.y = bin_help.read_float ( );
+		effect.m_normal.z = bin_help.read_float ( );
 		effect.id = bin_help.read_int ( );
-		effect.m_tmp0 = glm::vec3 ( bin_help.read_float ( ), bin_help.read_float ( ), bin_help.read_float ( ) );
+		effect.m_tmp0.x = bin_help.read_float ( );
+		effect.m_tmp0.y = bin_help.read_float ( );
+		effect.m_tmp0.z = bin_help.read_float ( );
 		bin_help.read_uint ( );
 		effect.m_tmp1 = glm::vec3 ( bin_help.read_float ( ), bin_help.read_float ( ), bin_help.read_float ( ) );
 		bin_help.seek ( start + 92 );

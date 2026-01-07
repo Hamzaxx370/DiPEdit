@@ -7,7 +7,7 @@
 #include "game\core\particle.h"
 #include "particle.h"
 
-glm::mat4 get_bone_mtx ( ceffect_authoring effect, ccomponent_anim* animator, bool first ) {
+glm::mat4 get_bone_mtx ( ceffect_authoring effect, ccomponent_anim* animator ) {
 	glm::vec3 final_pos ( 0.0f );
 	glm::quat final_rot ( 1.0f, 0.0f, 0.0f, 0.0f ); // Identity
 
@@ -16,10 +16,10 @@ glm::mat4 get_bone_mtx ( ceffect_authoring effect, ccomponent_anim* animator, bo
 	if ( b >= 0 ) {
 		const cskel_bone& bone = animator->m_bones [ b ];
 
-		if ( effect.m_copy_pos || first ) {
+		if ( effect.m_copy_pos ) {
 			final_pos = bone.m_anim_pos;
 		}
-		if ( effect.m_copy_rot || first ) {
+		if ( effect.m_copy_rot ) {
 			final_rot = bone.m_anim_rot;
 		}
 	}
@@ -28,28 +28,41 @@ glm::mat4 get_bone_mtx ( ceffect_authoring effect, ccomponent_anim* animator, bo
 	return glm::translate ( glm::mat4 ( 1.0f ), final_pos ) * glm::mat4_cast ( final_rot );
 }
 
-sparticle_data get_bone_data ( ceffect_authoring effect, ccomponent_anim* animator, bool first ) {
+sparticle_data get_bone_data ( ceffect_authoring effect, ccomponent_anim* animator ) {
 	sparticle_data data;
+	data.m_pos = glm::vec3 ( 0.0f );
+	data.m_normal = glm::vec3 ( 0.0f );
+	data.m_tmp0 = glm::vec3 ( 0.0f );
+
+	glm::vec3 e_norm = effect.m_normal;
+	glm::vec3 e_tmp0 = effect.m_tmp0;
+	glm::vec3 e_pos = effect.m_xyz;
 
 	int b = effect.m_bone_idx;
 	if ( b >= 0 ) {
 		const cskel_bone& bone = animator->m_bones [ b ];
 
-		if ( effect.m_copy_pos || first ) {
+		if ( effect.m_copy_pos ) {
 			data.m_pos = bone.m_anim_pos;
 		}
-		if ( effect.m_copy_rot || first ) {
+		if ( effect.m_copy_rot ) {
+			// Calculate vectors in Bone Space (Inverted Z)
 			data.m_normal = bone.m_anim_rot * glm::vec3 ( 0.0f, 0.0f, -1.0f );
+			data.m_tmp0 = bone.m_anim_rot * glm::vec3 ( 0.0f, 1.0f, 0.0f );
 		}
 
-		data.m_pos += glm::vec3 ( effect.m_xyz.x, effect.m_xyz.y, effect.m_xyz.z );
-		data.m_normal += effect.m_normal;
-		data.m_tmp0 = effect.m_tmp0;
+		e_pos.z = -e_pos.z;
+		e_norm.z = -e_norm.z;
+		e_tmp0.z = -e_tmp0.z;
+
+		data.m_pos += e_pos;
+		data.m_normal += e_norm;
+		data.m_tmp0 += e_tmp0;
 	}
 
-	// Build final matrix and assign to particle
 	return data;
 }
+
 
 cact_dummy::cact_dummy ( cact_base* p_parent, e_actid actid, int mot_id ) : cact_entity ( p_parent, actid ) {
 	m_animator = new ccomponent_anim ( );
@@ -61,8 +74,8 @@ cact_dummy::cact_dummy ( cact_base* p_parent, e_actid actid, int mot_id ) : cact
 	}
 
 	m_animator->m_bones = read_ogre_bones ( "Default\\KiryuBody.OME" );
-	m_animator->m_anim = read_ogre_motion ( ( "MotionBattle\\0-" + std::to_string ( mot_id ) + ".dat" ).c_str ( ) );
-	m_effects = read_ogre_pmm ( ( "MotionBattle\\1-" + std::to_string ( mot_id ) + ".dat" ).c_str ( ) );
+	m_animator->m_anim = read_ogre_motion ( ( cgame::get ( )->m_motion_path + "\\0-" + std::to_string ( mot_id ) + ".dat" ).c_str ( ) );
+	m_effects = read_ogre_pmm ( ( cgame::get ( )->m_motion_path + "\\1-" + std::to_string ( mot_id ) + ".dat" ).c_str ( ) );;
 
 	m_looped = false;
 
@@ -104,6 +117,9 @@ void cact_dummy::exec1 ( ) {
 			cact_particle* p = new cact_particle ( this, cengine::get ( )->act_man->get_free_id ( e_actid::particle_start, e_actid::particle_end ), cgame::get()->m_particle_path + "\\" + get_ptcl_from_id ( m_effects [ i ].id ) + ".ptcl" );
 			m_particles [ i ] = p->m_act_id;
 			p->create_with_param ( m_effects [ i ], m_act_id );
+			for ( auto& ptcl : p->m_particles ) {
+				ptcl->set_particle_data ( get_bone_data ( m_effects [ i ], m_animator ) );
+			}
 		}
 	}
 
@@ -121,7 +137,7 @@ void cact_dummy::exec1 ( ) {
 		}
 
 		for ( auto& particle : p->m_particles ) {
-			particle->set_attach_mtx ( get_bone_mtx ( m_effects [ idx ], m_animator, glm::epsilonEqual ( m_animator->m_frame_counter, m_effects [ idx ].m_start, 1.0f ) ) );
+			particle->set_particle_data ( get_bone_data ( m_effects [ idx ], m_animator ) );
 		}
 
 		idx++;

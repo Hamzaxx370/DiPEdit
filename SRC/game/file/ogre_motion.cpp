@@ -300,7 +300,7 @@ std::vector<ceffect_authoring> read_ogre_pmm ( const char* filename ) {
 		bin_help.seek ( start + 32 );
 		effect.m_xyz.x = bin_help.read_float ( );
 		effect.m_xyz.y = bin_help.read_float ( );
-		effect.m_xyz.z = bin_help.read_float ( );
+		effect.m_xyz.z = -bin_help.read_float ( );
 		int type = bin_help.read_int ( );
 		effect.m_normal.x = bin_help.read_float ( );
 		effect.m_normal.y = bin_help.read_float ( );
@@ -310,10 +310,11 @@ std::vector<ceffect_authoring> read_ogre_pmm ( const char* filename ) {
 		effect.m_tmp0.y = bin_help.read_float ( );
 		effect.m_tmp0.z = bin_help.read_float ( );
 		bin_help.read_uint ( );
-		effect.m_tmp1 = glm::vec3 ( bin_help.read_float ( ), bin_help.read_float ( ), bin_help.read_float ( ) );
+		effect.m_tmp1.x = bin_help.read_float ( );
+		effect.m_tmp1.y = bin_help.read_float ( );
+		effect.m_tmp1.z = bin_help.read_float ( );
 		bin_help.seek ( start + 92 );
-		effect.m_copy_pos = bin_help.read_char ( );
-		effect.m_copy_rot = bin_help.read_char ( );
+		effect.m_tmp1_int = bin_help.read_int ( );
 		bin_help.seek ( start + 96 );
 		if ( type == 1 && effect.id != 0 ) { 
 			effects.push_back ( effect );

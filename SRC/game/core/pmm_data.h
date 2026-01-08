@@ -14,6 +14,5 @@ public:
 	glm::vec3 m_normal;
 	glm::vec3 m_tmp0;
 	glm::vec3 m_tmp1;
-	bool m_copy_pos;
-	bool m_copy_rot;
+	int m_tmp1_int;
 };

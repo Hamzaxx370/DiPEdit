@@ -103,7 +103,7 @@ void cact_particle::create_with_param ( ceffect_authoring effect, e_actid entity
 			continue;
 		}
 		particle->set_attach_mtx ( glm::mat4 ( 1.0f ) );
-		if ( effect.m_tmp1 [ 2 ] == 1.0f ) {
+		if ( effect.m_tmp1.z == 1.0f ) {
 			particle->set_emitter_flag ( e_emitter_flag::follow );
 		}
 		particle->set_speed ( effect.m_speed );

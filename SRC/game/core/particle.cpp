@@ -362,20 +362,16 @@ void cparticle_emitter::execute ( ) {
                     if ( m_output [ i ].m_life <= 0.0f ) {
                         float total_life = m_param.m_life_time;
                         float inv_speed_scale = m_param.m_inverse_speed;
-
                         float rnd = frandom ( );
 
-                        float initial_life_offset = ( total_life * rnd ) * inv_speed_scale;
+                        float initial_life = ( total_life * rnd ) * inv_speed_scale;
 
-                        float chain_life_duration = ( total_life + 2.0f * initial_life_offset ) - ( total_life * inv_speed_scale );
+                        float chain_life_duration = -( total_life * inv_speed_scale - ( total_life + initial_life + initial_life ) );
 
-                        float chain_speed_param = 1.0f;
-                        if ( abs ( chain_life_duration ) > 0.0001f ) {
-                            chain_speed_param = total_life * ( rnd / chain_life_duration );
-                        }
+                        float chain_speed_param = total_life * ( 1.0f / chain_life_duration );
 
                         init_particle_output ( m_param.m_vertex_param, &m_output [ i ] );
-                        m_output [ i ].m_life = m_param.m_life_time;
+                        m_output [ i ].m_life = total_life - initial_life;
 
                         m_matrix [ i ] = create_matrix ( m_random_param [ i ] );
 
@@ -461,10 +457,6 @@ void cparticle_emitter::execute ( ) {
                 
                 m_output_chains [ i ]->execute ( scaled_dt );
                 m_output_chains [ i ]->output ( &m_output [ i ], m_param.m_vertex_param );
-
-                if ( check_flag ( e_emitter_flag::follow ) ) {
-                    m_matrix [ i ] = set_matrix ( m_particle_param, m_pos, m_normal, m_tmp0, m_random_param [ i ] );
-                }
             }
             else {
                 // Particle died, mark as available
@@ -519,6 +511,10 @@ void cparticle_emitter::draw ( std::vector<cmesh_ref> meshes ) {
 
             if ( m_param.m_vertex_param.m_scale_flag != 2 ) {
                 o.m_scale = glm::vec4 ( o.m_scale.w );
+            }
+
+            if ( check_flag ( e_emitter_flag::follow ) ) {
+                m_matrix [ i ] = set_matrix ( m_particle_param, m_pos, m_normal, m_tmp0, m_random_param [ i ] );
             }
 
             d.m_meshes = meshes;

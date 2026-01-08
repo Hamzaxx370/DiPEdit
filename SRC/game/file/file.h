@@ -13,7 +13,7 @@
 #include <iostream>
 #include <vector>
 
-class sparticle;
+struct sparticle;
 
 std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, const char* VSh, const char* FSh );
 std::vector <cskel_bone> read_ogre_bones ( const char* filename );

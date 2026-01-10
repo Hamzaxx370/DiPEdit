@@ -117,7 +117,7 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
         {
             float x = bin_help.read_float ( );
             float y = bin_help.read_float ( );
-            float z = -bin_help.read_float ( );
+            float z = bin_help.read_float ( );
             mesh->m_verts[ v ] = glm::vec3 ( x, y, z );
             if ( type == eODBP_TYPE_NORMAL )
             {
@@ -150,7 +150,7 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
             {
                 float nx = bin_help.read_float ( );
                 float ny = bin_help.read_float ( );
-                float nz = -bin_help.read_float ( );
+                float nz = bin_help.read_float ( );
                 mesh->m_norms [ v ] = glm::vec3 ( nx, ny, nz );
             }
             else
@@ -225,7 +225,7 @@ std::vector <cskel_bone> read_ogre_bones ( const char* filename ) {
         bin_help.seek ( bin_help.get_pos ( ) + 8 );
         float x = bin_help.read_float ( );
         float y = bin_help.read_float ( );
-        float z = -bin_help.read_float ( );
+        float z = bin_help.read_float ( );
         bin_help.seek ( bin_help.get_pos ( ) + 20 );
 
         glm::vec3 scale;

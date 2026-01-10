@@ -38,7 +38,7 @@ void get_pos ( cbinary_helper& bin_help, cskel_pos_key& keyframe, eKEYFRAME_TYPE
 {
 	keyframe.m_pos.x = bin_help.read_float ( );
 	keyframe.m_pos.y = bin_help.read_float ( );
-	keyframe.m_pos.z = -bin_help.read_float ( );
+	keyframe.m_pos.z = bin_help.read_float ( );
 }
 void get_rot ( cbinary_helper& bin_help, cskel_rot_key& keyframe, eKEYFRAME_TYPE type )
 {
@@ -66,7 +66,7 @@ void get_rot ( cbinary_helper& bin_help, cskel_rot_key& keyframe, eKEYFRAME_TYPE
 	double quat_normalized_y = ( quat_data_y / Magnitude );
 	double quat_normalized_z = ( quat_data_z / Magnitude );
 
-	glm::quat inverse = glm::quat ( -quat_normalized_w, -quat_normalized_x, -quat_normalized_y, quat_normalized_z );
+	glm::quat inverse = glm::quat ( -quat_normalized_w, quat_normalized_x, quat_normalized_y, quat_normalized_z );
 	keyframe.m_rot = glm::normalize ( inverse );
 }
 
@@ -281,18 +281,37 @@ cskel_anim* read_ogre_motion ( const char* filename ) {
 	return motion;
 }
 
-std::vector<ceffect_authoring> read_ogre_pmm ( const char* filename ) {
+cpmm_data read_ogre_pmm ( const char* filename ) {
 	cbinary_helper bin_help = cbinary_helper ( filename );
-	std::vector<ceffect_authoring> effects;
+	cpmm_data data;
 
-	bin_help.seek ( 8 );
+
+
 	int ptr = bin_help.read_int ( );
 	int count = bin_help.read_int ( );
+	int ptr1 = bin_help.read_int ( );
+	int count1 = bin_help.read_int ( );
+
 	bin_help.seek ( ptr );
 	for ( int i = 0; i < count; i++ ) {
+		cpmm_property prop;
+		prop.m_type = bin_help.read_int ( );
+		prop.m_start = bin_help.read_float ( );
+		prop.m_end = bin_help.read_float ( );
+		prop.m_tmp0 = bin_help.read_int ( );
+		prop.m_tmp1 = bin_help.read_int ( );
+		prop.m_tmp2 = bin_help.read_int ( );
+		prop.m_tmp3 = bin_help.read_int ( );
+		prop.m_tmp4 = bin_help.read_int ( );
+
+		data.m_properties.push_back ( prop );
+	}
+
+	bin_help.seek ( ptr1 );
+	for ( int i = 0; i < count1; i++ ) {
 		ceffect_authoring effect;
 		int start = bin_help.get_pos ( );
-		bin_help.read_int ( );
+		effect.m_play_type = bin_help.read_int ( );
 		effect.m_start = bin_help.read_float ( );
 		effect.m_end = bin_help.read_float ( );
 		effect.m_speed = bin_help.read_float ( );
@@ -300,25 +319,76 @@ std::vector<ceffect_authoring> read_ogre_pmm ( const char* filename ) {
 		bin_help.seek ( start + 32 );
 		effect.m_xyz.x = bin_help.read_float ( );
 		effect.m_xyz.y = bin_help.read_float ( );
-		effect.m_xyz.z = -bin_help.read_float ( );
-		int type = bin_help.read_int ( );
+		effect.m_xyz.z = bin_help.read_float ( );
+		effect.m_type = bin_help.read_int ( );
 		effect.m_normal.x = bin_help.read_float ( );
 		effect.m_normal.y = bin_help.read_float ( );
 		effect.m_normal.z = bin_help.read_float ( );
-		effect.id = bin_help.read_int ( );
+		effect.m_id = bin_help.read_int ( );
 		effect.m_tmp0.x = bin_help.read_float ( );
 		effect.m_tmp0.y = bin_help.read_float ( );
 		effect.m_tmp0.z = bin_help.read_float ( );
-		bin_help.read_uint ( );
+		effect.m_tmp0_int = bin_help.read_uint ( );
 		effect.m_tmp1.x = bin_help.read_float ( );
 		effect.m_tmp1.y = bin_help.read_float ( );
 		effect.m_tmp1.z = bin_help.read_float ( );
 		bin_help.seek ( start + 92 );
 		effect.m_tmp1_int = bin_help.read_int ( );
 		bin_help.seek ( start + 96 );
-		if ( type == 1 && effect.id != 0 ) { 
-			effects.push_back ( effect );
-		};
+		data.m_effects.push_back ( effect );
 	}
-	return effects;
+	return data;
+}
+
+void write_ogre_pmm ( const char* filename, cpmm_data data ) {
+	cbinary_helper bin_help = cbinary_helper ( filename, true );
+
+	int ptr = 32;
+	int count = data.m_properties.size ( );
+	int ptr1 = ptr + ( 32 * count );
+	int count1 = data.m_effects.size ( );
+	int size = ptr1 + ( count1 * 96 );
+
+	bin_help.write_int ( ptr );
+	bin_help.write_int ( count );
+	bin_help.write_int ( ptr1 );
+	bin_help.write_int ( count1 );
+	bin_help.write_int ( size );
+	bin_help.write_padding ( 12 );
+
+	for ( auto& prop : data.m_properties ) {
+		bin_help.write_int ( prop.m_type );
+		bin_help.write_float ( prop.m_start );
+		bin_help.write_float ( prop.m_end );
+		bin_help.write_int ( prop.m_tmp0 );
+		bin_help.write_int ( prop.m_tmp1 );
+		bin_help.write_int ( prop.m_tmp2 );
+		bin_help.write_int ( prop.m_tmp3 );
+		bin_help.write_int ( prop.m_tmp4 );
+	}
+
+	for ( auto& effect : data.m_effects ) {
+		bin_help.write_int ( effect.m_play_type );
+		bin_help.write_float ( effect.m_start );
+		bin_help.write_float ( effect.m_end );
+		bin_help.write_float ( effect.m_speed );
+		bin_help.write_int ( effect.m_bone_idx );
+		bin_help.write_padding ( 12 );
+		bin_help.write_float ( effect.m_xyz.x );
+		bin_help.write_float ( effect.m_xyz.y );
+		bin_help.write_float ( effect.m_xyz.z );
+		bin_help.write_int ( effect.m_type );
+		bin_help.write_float ( effect.m_normal.x );
+		bin_help.write_float ( effect.m_normal.y );
+		bin_help.write_float ( effect.m_normal.z );
+		bin_help.write_int ( effect.m_id );
+		bin_help.write_float ( effect.m_tmp0.x );
+		bin_help.write_float ( effect.m_tmp0.y );
+		bin_help.write_float ( effect.m_tmp0.z );
+		bin_help.write_int ( effect.m_tmp0_int );
+		bin_help.write_float ( effect.m_tmp1.x );
+		bin_help.write_float ( effect.m_tmp1.y );
+		bin_help.write_float ( effect.m_tmp1.z );
+		bin_help.write_int ( effect.m_tmp1_int );
+	}
 }

@@ -170,6 +170,8 @@ struct sparticle_output {
     float m_life;
 };
 
+const float PTCL_FRAME_SPD = 1.0f / 30.0f;
+
 class cparticle_element {
 public:
     std::vector<sparticle_element_param> m_params;
@@ -245,7 +247,7 @@ public:
     bool initialize ( sparticle_param particle_param, sparticle_emitter_param emitter_param, glm::vec3 vertex );
     void release ( );
 
-    void execute ( );
+    void execute ( float delta );
     void draw ( std::vector<cmesh_ref> meshes );
 
     glm::mat4 create_matrix ( sparticle_random_param& random_param );
@@ -278,7 +280,7 @@ public:
     bool initialize ( sparticle_param param, sparticle_data data, glm::vec3 vertex );
     void release ( );
 
-    void execute ( );
+    void execute ( float delta );
     void draw ( );
 
     void set_attach_mtx ( glm::mat4 attach ) { 
@@ -323,19 +325,4 @@ public:
     }
 };
 
-
-struct sptcl_info {
-    std::string name;
-    int id;
-};
-
-//Data stuff
-extern sptcl_info g_ptcl_info [ 697 ];
-
-static std::string get_ptcl_from_id ( int id ) {
-    for ( int i = 0; i < 697; i++ ) {
-        if ( g_ptcl_info [ i ].id == id )
-            return g_ptcl_info [ i ].name;
-    }
-    return "";
-}
+std::string get_ptcl_from_id ( int id );

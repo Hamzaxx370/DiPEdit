@@ -11,6 +11,7 @@ cact_particle::cact_particle ( cact_base* p_parent, e_actid actid, std::string p
 	m_ptcl_name = ptcl_name;
 	m_particle_data = load_particle_file ( m_ptcl_name.c_str ( ) );
 	m_entity_id = ( e_actid ) -1;
+	m_pause_particle_exec = false;
 }
 
 cact_particle::~cact_particle ( ) {
@@ -51,13 +52,14 @@ void cact_particle::exec1 ( ) {
 	for ( auto& particle : m_particles ) {
 		if ( particle->m_finished )
 			continue;
-		particle->execute ( );
+		if ( !m_pause_particle_exec )
+			particle->execute ( cengine::get ( )->render_man->get_delta ( ) / PTCL_FRAME_SPD );
 		particle->draw ( );
 	}
 }
 
 void cact_particle::create_blank ( ) {
-	if ( !m_particles.empty() ) {
+	if ( !m_particles.empty ( ) ) {
 		for ( auto& p : m_particles ) {
 			p->release ( );
 			delete p;
@@ -75,6 +77,7 @@ void cact_particle::create_blank ( ) {
 			continue;
 		}
 		particle->set_attach_mtx ( glm::mat4 ( 1.0f ) );
+
 		m_particles.push_back ( particle );
 	}
 }
@@ -109,5 +112,11 @@ void cact_particle::create_with_param ( ceffect_authoring effect, e_actid entity
 		particle->set_speed ( effect.m_speed );
 
 		m_particles.push_back ( particle );
+	}
+}
+
+void cact_particle::skip_time ( float start ) {
+	for ( auto& particle : m_particles ) {
+		particle->execute ( start );
 	}
 }

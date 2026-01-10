@@ -374,3 +374,11 @@ void write_particle_file ( const std::string& filename, sparticle* particle ) {
 		bin_help.write_int ( particle->m_id );
 
 }
+
+void get_particle_info ( std::string filename, std::string& ptcl_name, int& id ) {
+    cbinary_helper bin_help = cbinary_helper ( filename.c_str ( ) );
+
+    ptcl_name = bin_help.read_fixed_string ( 12 );
+    bin_help.seek ( 40 );
+    id = bin_help.read_int ( );
+};

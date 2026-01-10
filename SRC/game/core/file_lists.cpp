@@ -1,4 +1,4 @@
-#include "particle.h"
+#include "game.h"
 
 
 sptcl_info g_ptcl_info [ 697 ] = {

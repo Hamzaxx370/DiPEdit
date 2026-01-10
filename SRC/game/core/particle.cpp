@@ -225,14 +225,14 @@ bool cparticle::initialize ( sparticle_param param, sparticle_data data, glm::ve
     return true;
 }
 
-void cparticle::execute ( ) {
+void cparticle::execute ( float delta ) {
     if ( !m_emitter || !m_enabled ) {
         return;
     }
 
     m_finished = true;
     for ( int i = 0; i < m_gen_num; i++ ) {
-        m_emitter [ i ].execute ( );
+        m_emitter [ i ].execute ( delta );
         if ( !m_emitter [ i ].m_finished ) {
             m_finished = false;
         }
@@ -319,9 +319,7 @@ bool cparticle_emitter::initialize ( sparticle_param particle_param, sparticle_e
     return true;
 }
 
-const float FRAME_SPD = 1.0f / 30.0f;
-
-void cparticle_emitter::execute ( ) {
+void cparticle_emitter::execute ( float dt ) {
     if ( m_emission_num >= m_emission_duration ) {
         m_finished = true;
         for ( int i = 0; i < m_pool_size; ++i ) {
@@ -335,7 +333,6 @@ void cparticle_emitter::execute ( ) {
 
     if ( m_finished ) return;
 
-    float dt = cengine::get ( )->render_man->get_delta ( ) / FRAME_SPD;
     dt *= m_speed;
     
     // Apply time scaling
@@ -832,34 +829,31 @@ void cparticle_element::init_params ( sparticle_vertex_param vxp, sparticle_vect
 
     switch ( ( e_element_type ) m_params [ 0 ].m_type ) {
     case e_element_type::position: {
-        float rand1 = frandom ( );
-        float rand2 = frandom ( );
-        float rand3 = frandom ( );
+        float fVar9 = ( float ) frandom ( );
+        float fVar11 = vcp.m_pos_pan;
+        float fVar13 = vcp.m_pos_random * fVar9 + vcp.m_base + 0.0;
+        fVar9 = ( float ) frandom ( );
+        float fVar14 = vcp.m_vertical_pan;
+        float fVar12 = vcp.m_multiplier * ( ( fVar11 * fVar9 * 2.0 + 1.0 ) - fVar11 );
+        fVar9 = ( float ) frandom ( );
+        fVar11 = vcp.m_vertical_base;
+        unsigned int uVar10 = random ( );
+        float sin, cos;
+        sin_cos ( &sin, &cos, vcp.m_angle_base + calculate_random_angle_offset ( uVar10, unk_angle ) );
 
-        float base_val = vcp.m_pos_pan * rand1 + vcp.m_base;
-        float mult_val = vcp.m_multiplier * ( ( vcp.m_vertical_pan * rand2 * 2.0f ) - vcp.m_vertical_pan );
-        float vertical_val = vcp.m_vertical_base * ( ( vcp.m_pos_random * rand3 * 2.0f ) - vcp.m_pos_random );
 
-        int angle_offset = calculate_random_angle_offset ( random ( ), unk_angle );
-        int angle = ( int ) vcp.m_angle_base + angle_offset;
-
-        float sin_val, cos_val;
-        sin_cos ( &sin_val, &cos_val, angle );
-
-        m_effector_data [ 0 ] = 0.0f;
-        m_effector_data [ 1 ] = 0.0f;
-        m_effector_data [ 2 ] = 0.0f;
-        m_effector_data [ 3 ] = 0.0f;
-
-        m_effector_data [ 4 ] = 0.0f;
-        m_effector_data [ 5 ] = sin_val * base_val;
-        m_effector_data [ 6 ] = cos_val * base_val;
-        m_effector_data [ 7 ] = 0.0f;
-
-        m_effector_data [ 8 ] = 0.0f;
-        m_effector_data [ 9 ] = sin_val * mult_val + vertical_val;
-        m_effector_data [ 10 ] = cos_val * mult_val;
-        m_effector_data [ 11 ] = 0.0f;
+        m_effector_data [ 0 ] = 0.0;
+        m_effector_data [ 1 ] = 0.0;
+        m_effector_data [ 2 ] = 0.0;
+        m_effector_data [ 3 ] = 0.0;
+        m_effector_data [ 4 ] = 0.0;
+        m_effector_data [ 7 ] = 0.0;
+        m_effector_data [ 5 ] = fVar13 * sin;
+        m_effector_data [ 8 ] = 0.0;
+        m_effector_data [ 0xb ] = 0.0;
+        m_effector_data [ 6 ] = fVar13 * cos;
+        m_effector_data [ 10 ] = fVar12 * cos;
+        m_effector_data [ 9 ] = fVar12 * sin + fVar11 * ( ( fVar14 * fVar9 * 2.0 + 1.0 ) - fVar14 ) + 0.0;
         break;
     }
 
@@ -911,15 +905,15 @@ void cparticle_element::init_params ( sparticle_vertex_param vxp, sparticle_vect
         rnd = frandom ( );
 
         float new_accel_value_x = vxp.m_angular_accel_range.x * rnd + vxp.m_angular_accel_base.x;
-        m_effector_data [ 4 ] += new_accel_value_x * FRAME_SPD;
+        m_effector_data [ 4 ] += new_accel_value_x * PTCL_FRAME_SPD;
 
         rnd = frandom ( );
         float new_accel_value_y = vxp.m_angular_accel_range.y * rnd + vxp.m_angular_accel_base.y;
-        m_effector_data [ 5 ] += new_accel_value_y * FRAME_SPD;
+        m_effector_data [ 5 ] += new_accel_value_y * PTCL_FRAME_SPD;
 
         rnd = frandom ( );
         float new_accel_value_z = vxp.m_angular_accel_range.z * rnd + vxp.m_angular_accel_base.z;
-        m_effector_data [ 6 ] += new_accel_value_z * FRAME_SPD;
+        m_effector_data [ 6 ] += new_accel_value_z * PTCL_FRAME_SPD;
 
         break;
     }
@@ -1063,7 +1057,7 @@ void cdraw_particle::draw ( ) {
     // Draw all meshes
     for ( auto& mref : m_meshes ) {
         cmesh_buffer* m = mref.get ( );
-        m->m_mdl = final * glm::scale ( glm::mat4 ( 1.0f ), glm::vec3 ( 1.0f, 1.0f, -1.0f ) );
+        m->m_mdl = final;// * glm::scale ( glm::mat4 ( 1.0f ), glm::vec3 ( 1.0f, 1.0f, -1.0f ) );
 
         // Update textures with particle color and UV
         for ( auto& tref : m->m_used_tex ) {
@@ -1079,4 +1073,17 @@ void cdraw_particle::draw ( ) {
 
         m->draw ( );
     }
+}
+
+// Little helper section for getting particles through ids
+
+#include <filesystem>
+namespace fs = std::filesystem;
+
+std::string get_ptcl_from_id ( int id ) {
+    for ( auto& info : cgame::get ( )->m_ptcl_info ) {
+        if ( info.id == id )
+            return info.name;
+    }
+    return "";
 }

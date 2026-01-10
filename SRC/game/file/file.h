@@ -19,7 +19,9 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
 std::vector <cskel_bone> read_ogre_bones ( const char* filename );
 std::vector<ctex_ref> read_ogre_tex_file ( const char* filename );
 cskel_anim* read_ogre_motion ( const char* filename );
-std::vector<ceffect_authoring> read_ogre_pmm ( const char* filename );
+cpmm_data read_ogre_pmm ( const char* filename );
+void write_ogre_pmm ( const char* filename, cpmm_data data );
+void get_particle_info ( std::string filename, std::string& name, int& id );
 sparticle* load_particle_file ( std::string filename );
 void write_particle_file ( const std::string& filename, sparticle* particle );
 #endif

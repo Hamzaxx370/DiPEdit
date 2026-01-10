@@ -22,7 +22,7 @@ public:
 	cskel_anim* m_anim;
 
 	float m_frame_counter;
-	bool m_looped;
+	bool m_paused;
 
 	ccomponent_anim ( );
 	~ccomponent_anim ( );

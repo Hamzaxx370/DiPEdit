@@ -21,6 +21,8 @@ public:
 
 	e_actid m_entity_id;
 
+	bool m_pause_particle_exec;
+
 	cact_particle ( cact_base* p_parent, e_actid actid, std::string ptcl_name );
 	~cact_particle ( );
 
@@ -29,6 +31,8 @@ public:
 
 	void create_blank ( );
 	void create_with_param ( ceffect_authoring effect, e_actid entity_id );
+
+	void skip_time ( float start );
 };
 
 #endif // ! __PARTICLE_H__

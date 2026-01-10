@@ -14,7 +14,7 @@
 
 ccomponent_anim::ccomponent_anim ( ) {
     m_anim = nullptr;
-    m_looped = false;
+    m_paused = false;
     m_frame_counter = 0.0f;
 }
 
@@ -29,7 +29,8 @@ void ccomponent_anim::exec ( ) {
 
     cskel_animator::skel_update_animation ( m_bones, m_anim, m_frame_counter );
 
-    m_frame_counter += cengine::get ( )->render_man->get_delta ( ) / ( 1.0f / m_anim->m_frame_rate );
+    if ( m_frame_counter <= m_anim->m_frame_num && !m_paused )
+        m_frame_counter += cengine::get ( )->render_man->get_delta ( ) / ( 1.0f / m_anim->m_frame_rate );
 }
 
 ccomponent_physics::ccomponent_physics ( ) {

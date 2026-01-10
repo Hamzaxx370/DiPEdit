@@ -8,8 +8,8 @@
 #include "game.h"
 
 #include "game\actor\root.h"
-#include "game\actor\particle.h"
 #include "engine\core\engine.h"
+#include "engine\core\components.h"
 #include "engine\sys\actor\actor.h"
 #include "engine\sys\render\render.h"
 #include "particle.h"
@@ -157,12 +157,13 @@ namespace fs = std::filesystem;
 cgame* cgame::instance = nullptr;
 
 cgame::cgame ( ) {
-	m_particle_path = "PTCL_ALL_Y1";
+	m_particle_path = "";
 	m_got_folder = false;
 	m_is_y2 = false;
-    m_looped = false;
-    m_got_mot_folder = false;
-    m_motion_num = 32;
+    m_particle_looped = false;
+
+    m_got_motion = false;
+    m_motion_looped = false;
 }
 
 cgame::~cgame ( ) {
@@ -212,13 +213,16 @@ void cgame::run ( )
         ImGuiFileDialog::Instance ( )->OpenDialog ( "ChoosePTCLFolder", "Choose a folder", nullptr );
     }
 
-    //if ( ImGui::Button ( "Open Motion Folder" ) ) {
-    //    ImGuiFileDialog::Instance ( )->OpenDialog ( "ChooseMotFolder", "Choose a folder", nullptr );
-    //}
+    if ( ImGui::Button ( "Open Motion" ) ) {
+        ImGuiFileDialog::Instance ( )->OpenDialog ( "ChooseMotFile", "Choose Motion file", ".dat" );
+    }
 
-    cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::particle_start );
+    cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
 
-    ImGui::Checkbox ( "Is Yakuza 2", &m_is_y2 );
+    if ( ImGui::Checkbox ( "Is Yakuza 2", &m_is_y2 ) ) {
+        m_ptcl_info.clear ( );
+        populate_info ( );
+    };
 
     if ( m_got_folder ) {
         ImGui::Text ( "PTCL Files" );
@@ -226,24 +230,60 @@ void cgame::run ( )
         draw_ptcl_tree ( );
     }
 
-    if ( m_got_mot_folder ) {
-        ImGui::Text ( "Motion Files" );
-
-        draw_mot_tree ( );
+    // messy
+    bool ok = false;
+    if ( ImGuiFileDialog::Instance ( )->Display ( "ChooseMotFile" ) ) {
+        if ( ImGuiFileDialog::Instance ( )->IsOk ( ) ) {
+            m_motion_path = ImGuiFileDialog::Instance ( )->GetFilePathName ( );
+            ok = true;
+        }
+        ImGuiFileDialog::Instance ( )->Close ( );
     }
 
-    if ( ImGuiFileDialog::Instance ( )->Display ( "ChoosePTCLFolder" ) ) {
+    if ( ok )
+        ImGuiFileDialog::Instance ( )->OpenDialog ( "ChoosePmmFile", "Choose PMM file", ".dat" );
+    
+    if ( ImGuiFileDialog::Instance ( )->Display ( "ChoosePmmFile" ) ) {
         if ( ImGuiFileDialog::Instance ( )->IsOk ( ) ) {
-            m_particle_path = ImGuiFileDialog::Instance ( )->GetCurrentPath ( );
-            p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::particle_start );
+            m_pmm_path = ImGuiFileDialog::Instance ( )->GetFilePathName ( );
+            m_got_motion = true;
+
+            cact_dummy* d = ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
+            if ( !d ) {
+                d = new cact_dummy ( cengine::get ( )->act_man->get_actor ( e_actid::root ), e_actid::dummy );
+            }
+            d->reload_motion ( m_motion_path, m_pmm_path, true );
+
+            p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
             if ( p ) {
                 p->set_exec_flag ( e_act_exec::pause );
                 p->set_exec_flag ( e_act_exec::done );
             }
+        }
+        ImGuiFileDialog::Instance ( )->Close ( );
+    }
+
+
+    if ( ImGuiFileDialog::Instance ( )->Display ( "ChoosePTCLFolder" ) ) {
+        if ( ImGuiFileDialog::Instance ( )->IsOk ( ) ) {
+            m_particle_path = ImGuiFileDialog::Instance ( )->GetCurrentPath ( );
+            p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
+            if ( p ) {
+                p->set_exec_flag ( e_act_exec::pause );
+                p->set_exec_flag ( e_act_exec::done );
+            }
+
+            cact_dummy* d = ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
+            if ( d ) {
+                d->set_exec_flag ( e_act_exec::pause );
+                d->set_exec_flag ( e_act_exec::done );
+            }
+
             m_got_folder = true;
 
             m_mesh_list.clear ( );
             m_tex_list.clear ( );
+            m_ptcl_info.clear ( );
 
 			cengine::get ( )->mesh_man->clear_mesh ( );
             cengine::get ( )->tex_man->clear_tex ( );
@@ -270,21 +310,17 @@ void cgame::run ( )
         ImGuiFileDialog::Instance ( )->Close ( );
     }
 
-    if ( ImGuiFileDialog::Instance ( )->Display ( "ChooseMotFolder" ) ) {
-        if ( ImGuiFileDialog::Instance ( )->IsOk ( ) ) {
-            m_motion_path = ImGuiFileDialog::Instance ( )->GetCurrentPath ( );
-            m_got_mot_folder = true;
-        }
-        ImGuiFileDialog::Instance ( )->Close ( );
-    }
+    p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
 
-    p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::particle_start );
-
-    if ( m_looped && p && p->m_particles.empty ( ) ) {
+    if ( m_particle_looped && p && p->m_particles.empty ( ) ) {
         p->create_blank ( );
     }
 
-    draw_ptcl_data ( );
+    cact_dummy* d = ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
+
+    if ( m_motion_looped && d && d->m_animator->m_anim->m_frame_num < d->m_animator->m_frame_counter ) {
+        d->reload_motion ( m_motion_path, m_pmm_path );
+    }
 
     if ( p && p->m_particle_data ) {
         IGFD::FileDialogConfig cfg;
@@ -316,27 +352,70 @@ void cgame::run ( )
         }
     }
 
+    d = ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
 
-    /*
-    ImGui::InputInt ( "Motion", &mot_num, 1, 100 );
+    if ( d ) {
+        IGFD::FileDialogConfig cfg;
+        cfg.fileName = "prop.dat";
+        cfg.filePathName = ".";
+        cfg.flags = ImGuiFileDialogFlags_ConfirmOverwrite;
 
-    if ( ImGui::IsItemDeactivatedAfterEdit ( ) ) {
-        cact_dummy* d = ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
-        if ( d ) {
-            d->set_exec_flag ( e_act_exec::pause );
-            d->set_exec_flag ( e_act_exec::done );
+        if ( ImGui::Button ( "Save Property" ) )
+        {
+            ImGuiFileDialog::Instance ( )->OpenDialog (
+                "SaveProp",
+                "Save Property",
+                ".dat",
+                cfg
+            );
         }
-        else {
-            new cact_dummy ( cengine::get ( )->act_man->get_actor ( e_actid::root ), e_actid::dummy, mot_num );
+
+        if ( ImGuiFileDialog::Instance ( )->Display ( "SaveProp" ) )
+        {
+            if ( ImGuiFileDialog::Instance ( )->IsOk ( ) )
+            {
+                std::string path =
+                    ImGuiFileDialog::Instance ( )->GetFilePathName ( );
+
+                write_ogre_pmm ( path.c_str ( ), d->m_pmm_data );
+            }
+
+            ImGuiFileDialog::Instance ( )->Close ( );
         }
     }
 
-    */
+    draw_ptcl_data ( );
+    draw_pmm_data ( );
+    populate_info ( );
 
     ImGui::End ( );
 
     ImGui::Render ( );
     ImGui_ImplOpenGL3_RenderDrawData ( ImGui::GetDrawData ( ) );
+}
+
+void cgame::populate_info ( ) {
+    if ( !m_got_folder ) return;
+    if ( m_ptcl_info.empty ( ) ) {
+        if ( m_is_y2 ) {
+            for ( auto& entry : fs::directory_iterator ( m_particle_path ) )
+            {
+                if ( entry.path ( ).extension ( ) == ".ptcl" )
+                {
+                    const std::string filename = entry.path ( ).string ( );
+                    std::string name;
+                    int id;
+                    get_particle_info ( filename, name, id );
+                    m_ptcl_info.push_back ( { name,id } );
+                }
+            }
+        }
+        else {
+            for ( int i = 0; i < 697; i++ ) {
+                m_ptcl_info.push_back ( g_ptcl_info [ i ] );
+            }
+        }
+    }
 }
 
 void cgame::draw_ptcl_tree ( )
@@ -362,10 +441,10 @@ void cgame::draw_ptcl_tree ( )
                 if ( ImGui::IsItemClicked ( ) )
                 {
                     m_particle_name = entry.path ( ).string ( ); // store clicked file
-                    cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::particle_start );
+                    cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
                     if ( !p )
-                        new cact_particle ( cengine::get ( )->act_man->get_actor ( e_actid::particle_manager ),
-                            cengine::get ( )->act_man->get_free_id ( e_actid::particle_start, e_actid::particle_end ),
+                        new cact_particle ( cengine::get ( )->act_man->get_actor ( e_actid::root ),
+                            e_actid::test_particle,
                             m_particle_name );
                     else {
                         p->m_ptcl_name = m_particle_name;
@@ -381,12 +460,6 @@ void cgame::draw_ptcl_tree ( )
     }
 }
 
-
-// ============================================================================
-// Add this to game.cpp replacing the previous draw_ptcl_data
-// ============================================================================
-
-// Helper for resizing std::string (Same as before)
 struct InputTextCallback_UserData {
     std::string* Str;
     ImGuiInputTextCallback ChainCallback;
@@ -821,7 +894,6 @@ static void texture_tooltip ( ctex_buffer* tex )
     ImGui::EndTooltip ( );
 }
 
-
 void draw_texture_selector (
     int& selected_tex_id,
     std::vector<std::vector<ctex_ref>> tex_list )
@@ -861,7 +933,7 @@ void draw_texture_selector (
 
 
 void cgame::draw_ptcl_data ( ) {
-    cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::particle_start );
+    cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
     if ( !p || !p->m_particle_data ) {
         return;
     }
@@ -882,7 +954,16 @@ void cgame::draw_ptcl_data ( ) {
 
     ImGui::SameLine ( );
 
-    ImGui::Checkbox ( "Loop", &m_looped );
+    ImGui::Checkbox ( "Loop", &m_particle_looped );
+
+    ImGui::SameLine ( );
+
+    if ( ImGui::Button ( "Exit" ) ) {
+        p->set_exec_flag ( e_act_exec::pause );
+        p->set_exec_flag ( e_act_exec::done );
+        ImGui::End ( );
+        return;
+    }
 
     if ( ImGui::CollapsingHeader ( "Particle Info", ImGuiTreeNodeFlags_DefaultOpen ) ) {
         InputString ( "Name", &ptcl_data->m_name );
@@ -1088,78 +1169,266 @@ static bool parse_motion_number ( const std::string& name, int& out_num )
     }
 }
 
+cpmm_property default_property ( ) {
+    cpmm_property prop;
 
-void cgame::draw_mot_tree ( )
-{
-    if ( !fs::exists ( m_motion_path ) )
-        return;
+    prop.m_type = 3;
+    prop.m_start = 0.0f;
+    prop.m_end = 3.0f;
+    prop.m_tmp0 = 0;
+    prop.m_tmp1 = 0;
+    prop.m_tmp2 = 0;
+    prop.m_tmp3 = 0;
+    prop.m_tmp4 = 0;
 
-    if ( ImGui::TreeNodeEx ( m_motion_path.c_str ( ), ImGuiTreeNodeFlags_DefaultOpen ) )
-    {
-        for ( auto& entry : fs::directory_iterator ( m_motion_path ) )
-        {
-            if ( !entry.is_regular_file ( ) )
-                continue;
-
-            const std::string filename = entry.path ( ).filename ( ).string ( );
-
-            // ONLY files that start with "0-"
-            if ( filename.rfind ( "0-", 0 ) != 0 )
-                continue;
-
-            // Optional: still require .dat
-            if ( entry.path ( ).extension ( ) != ".dat" )
-                continue;
-
-            int mot_num = -1;
-
-            // Extract number after "0-"
-            try {
-                mot_num = std::stoi ( filename.substr ( 2, filename.size ( ) - 6 ) );
-            }
-            catch ( ... ) {
-                continue;
-            }
-
-            ImGuiTreeNodeFlags flags =
-                ImGuiTreeNodeFlags_Leaf |
-                ImGuiTreeNodeFlags_NoTreePushOnOpen;
-
-            if ( m_motion_num == mot_num )
-                flags |= ImGuiTreeNodeFlags_Selected;
-
-            ImGui::TreeNodeEx (
-                ( void* ) ( intptr_t ) mot_num,
-                flags,
-                "%d",
-                mot_num
-            );
-
-            if ( ImGui::IsItemClicked ( ) )
-            {
-                m_motion_num = mot_num;
-
-                cact_dummy* d =
-                    ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
-
-                if ( d ) {
-                    d->set_exec_flag ( e_act_exec::pause );
-                    d->set_exec_flag ( e_act_exec::done );
-                }
-                else {
-                    new cact_dummy (
-                        cengine::get ( )->act_man->get_actor ( e_actid::root ),
-                        e_actid::dummy,
-                        m_motion_num
-                    );
-                }
-            }
-        }
-
-        ImGui::TreePop ( );
-    }
+    return prop;
 }
 
-void cgame::draw_mot_data ( ) {
+ceffect_authoring default_effect ( ) {
+    ceffect_authoring effect;
 
+    effect.m_play_type = 1;
+    effect.m_start = 0.0f;
+    effect.m_end = 3.0f;
+    effect.m_speed = 1.0f;
+    effect.m_bone_idx = 0;
+    effect.m_type = 1;
+    effect.m_id = 1169;
+    effect.m_xyz = glm::vec3 ( 0.0f );
+    effect.m_normal = glm::vec3 ( 0.0f );
+    effect.m_tmp0 = glm::vec3 ( 0.0f );
+    effect.m_tmp1 = glm::vec3 ( 0.0f );
+    effect.m_tmp1_int = 0;
+
+    return effect;
+}
+
+void set_bit ( int& flag, int bit, bool enabled ) {
+    if ( !enabled )
+        flag &= ~( 1 << bit );
+    else
+        flag |= ( 1 << bit );
+}
+
+const char* effect_play_types [ ] = {
+    "Normal", "One Shot"
+};
+
+struct vec_rot {
+    float yaw;
+    float pitch;
+    float length;
+};
+
+static vec_rot vector_to_ui ( const glm::vec3& v ) {
+    vec_rot ui {};
+
+    ui.length = glm::length ( v );
+
+    if ( ui.length > 1e-6f ) {
+        glm::vec3 d = v / ui.length;
+        ui.yaw = atan2 ( d.x, d.z );
+        ui.pitch = asin ( glm::clamp ( d.y, -1.0f, 1.0f ) );
+    }
+    else {
+        ui.yaw = 0.0f;
+        ui.pitch = 0.0f;
+        ui.length = 1.0f;
+    }
+
+    return ui;
+}
+
+static glm::vec3 ui_to_vector ( const vec_rot& ui ) {
+    float cp = cos ( ui.pitch );
+
+    glm::vec3 dir {
+        sin ( ui.yaw ) * cp,
+        sin ( ui.pitch ),
+        cos ( ui.yaw ) * cp
+    };
+
+    return dir * ui.length;
+}
+
+bool edit_rot_vec (
+    const char* label,
+    glm::vec3& inout_vec,
+    float max_length = 1000.0f
+) {
+    vec_rot ui {};
+    bool changed = false;
+
+    ImGui::PushID ( label );
+
+    ui = vector_to_ui ( inout_vec );
+
+    ImGui::TextUnformatted ( label );
+    ImGui::Indent ( );
+
+    changed |= ImGui::SliderAngle ( "Yaw", &ui.yaw, -180.0f, 180.0f );
+    changed |= ImGui::SliderAngle ( "Pitch", &ui.pitch, -89.0f, 89.0f );
+    changed |= ImGui::DragFloat (
+        "Length", &ui.length,
+        0.01f, 0.0001f, max_length, "%.4f"
+    );
+
+    ImGui::Unindent ( );
+
+    if ( ui.length < 1e-6f )
+        ui.length = 1e-6f;
+
+    if ( changed ) {
+        inout_vec = ui_to_vector ( ui );
+    }
+
+    ImGui::PopID ( );
+    return changed;
+}
+
+void cgame::draw_pmm_data ( ) {
+    cact_dummy* d = ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
+    if ( !d ) {
+        return;
+    }
+
+    ImGuiViewport* viewport = ImGui::GetMainViewport ( );
+    ImGui::SetNextWindowPos ( ImVec2 ( viewport->WorkPos.x + viewport->WorkSize.x - s_right_panel_w, viewport->WorkPos.y ) );
+    ImGui::SetNextWindowSize ( ImVec2 ( s_right_panel_w, viewport->WorkSize.y ) );
+
+    ImGui::Begin ( "Motion data editor" );
+
+    if ( ImGui::SliderFloat ( "Time", &d->m_animator->m_frame_counter, 0.0f, d->m_animator->m_anim->m_frame_num ) ) {
+        d->set_time ( d->m_animator->m_frame_counter );
+    }
+
+    if ( ImGui::Button ( "Play" ) ) {
+        d->reload_motion ( m_motion_path, m_pmm_path );
+    }
+
+    ImGui::SameLine ( );
+
+    ImGui::Checkbox ( "Loop", &m_motion_looped );
+
+    ImGui::SameLine ( );
+
+    ImGui::Checkbox ( "Pause", &d->m_pause_motion );
+
+    ImGui::SameLine ( );
+
+    if ( ImGui::Button ( "Exit" ) ) {
+        d->set_exec_flag ( e_act_exec::pause );
+        d->set_exec_flag ( e_act_exec::done );
+        ImGui::End ( );
+        return;
+    }
+
+    if ( ImGui::BeginTabBar ( "Pmm data" ) ) {
+        if ( ImGui::BeginTabItem ( "Properties" ) ) {
+            if ( ImGui::Button ( "Add Property" ) ) {
+                d->m_pmm_data.m_properties.push_back ( default_property ( ) );
+            }
+            for ( int i = 0; i < d->m_pmm_data.m_properties.size ( ); i++ ) {
+                ImGui::PushID ( i );
+
+                bool open = ImGui::TreeNode ( "##property_node", "Property %d", i );
+                ImGui::SameLine ( );
+                if ( ImGui::SmallButton ( "Delete" ) ) {
+                    d->m_pmm_data.m_properties.erase ( d->m_pmm_data.m_properties.begin ( ) + i );
+                    ImGui::PopID ( );
+                    if ( open ) ImGui::TreePop ( );
+                    continue;
+                }
+
+                if ( open ) {
+                    cpmm_property& prop = d->m_pmm_data.m_properties [ i ];
+                    ImGui::InputInt ( "Type", &prop.m_type );
+                    ImGui::DragFloat2 ( "Start / End", &prop.m_start );
+                    ImGui::InputInt ( "Tmp0", &prop.m_tmp0 );
+                    ImGui::InputInt ( "Tmp1", &prop.m_tmp1 );
+                    ImGui::InputInt ( "Tmp2", &prop.m_tmp2 );
+                    ImGui::InputInt ( "Tmp3", &prop.m_tmp3 );
+                    ImGui::InputInt ( "Tmp4", &prop.m_tmp4 );
+
+                    ImGui::TreePop ( );
+                }
+
+                ImGui::PopID ( );
+            }
+
+            ImGui::EndTabItem ( );
+        }
+
+        if ( ImGui::BeginTabItem ( "Effects" ) ) {
+            if ( ImGui::Button ( "Add Effect" ) ) {
+                d->m_pmm_data.m_effects.push_back ( default_effect ( ) );
+            }
+            for ( int i = 0; i < d->m_pmm_data.m_effects.size ( ); i++ ) {
+                ImGui::PushID ( i );
+
+                bool open = ImGui::TreeNode ( "##effect_node", "Effect %d", i );
+                ImGui::SameLine ( );
+                if ( ImGui::SmallButton ( "Delete" ) ) {
+                    d->m_pmm_data.m_effects.erase ( d->m_pmm_data.m_effects.begin ( ) + i );
+                    ImGui::PopID ( );
+                    if ( open ) ImGui::TreePop ( );
+                    continue;
+                }
+
+                bool reset = false;
+
+                if ( open ) {
+                    ceffect_authoring& effect = d->m_pmm_data.m_effects [ i ];
+                    ImGui::Combo ( "Play Type", &effect.m_play_type, effect_play_types, IM_ARRAYSIZE ( effect_play_types ) );
+                    ImGui::DragFloat2 ( "Start / End", &effect.m_start );
+                    ImGui::DragFloat ( "Speed", &effect.m_speed, 0.0f, 100.0f );
+
+                    ImGui::InputInt ( "Type", &effect.m_type );
+                    ImGui::InputInt ( "ID", &effect.m_id );
+
+                    switch ( effect.m_type ) {
+                    case 1:
+                        if ( effect.m_id != 0 ) {
+                            ImGui::InputInt ( "Bone Number", &effect.m_bone_idx );
+                            if ( ImGui::DragFloat3 ( "Position", &effect.m_xyz.x, 0.1f ) ) reset = true;
+                            if ( edit_rot_vec ( "Target", effect.m_normal ) ) reset = true;
+                            if ( edit_rot_vec ( "Effect", effect.m_tmp0 ) ) reset = true;
+                            if ( ImGui::DragFloat3 ( "Flags", &effect.m_tmp1.x ) ) reset = true;
+
+                            ImGui::InputInt ( "Condition Flags", &effect.m_tmp0_int );
+
+                            bool parent = effect.m_tmp1_int & 0x00000001;
+                            bool rot = effect.m_tmp1_int & 0x00000100;
+
+                            ImGui::Checkbox ( "Follow Parent", &parent );
+                            ImGui::Checkbox ( "Follow Rotation", &rot );
+
+                            set_bit ( effect.m_tmp1_int, 0, parent );
+                            set_bit ( effect.m_tmp1_int, 8, rot );
+                        }
+                        else {
+
+                        }
+                        break;
+                    default:
+                        break;
+                    }
+
+                    ImGui::TreePop ( );
+                }
+
+                if ( reset ) {
+                    d->set_time ( d->m_animator->m_frame_counter );
+                }
+
+                ImGui::PopID ( );
+            }
+
+            ImGui::EndTabItem ( );
+        }
+
+        ImGui::EndTabBar ( );
+    }
+
+    ImGui::End ( );
 }

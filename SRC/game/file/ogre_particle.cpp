@@ -2,7 +2,7 @@
 
 #include "game\core\game.h"
 #include "engine\file\binary_helper.h"
-#include "game\core\particle.h"
+#include "game\sys\ogre\particle\particle.h"
 
 sparticle* load_particle_file ( std::string filename ) {
 	sparticle* particle = new sparticle();

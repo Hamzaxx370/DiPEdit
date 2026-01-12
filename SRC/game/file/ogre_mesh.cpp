@@ -41,13 +41,14 @@ struct SODBPHeader {
 struct SMeshHeader
 {
     int info_ptr;
+    int fv_flags;
     int vert_ptr;
     int vert_count;
     int face_ptr;
     int face_count;
 };
 
-std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, const char* VSh, const char* FSh ) {
+std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, const char* VSh, const char* FSh ) {
     std::vector<cmesh_ref> names;
 	cbinary_helper bin_help = cbinary_helper ( szFileName );
     bin_help.seek ( 0 );
@@ -90,7 +91,8 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
     for ( int i = 0; i < subheader.mesh_count; i++ )
     {
         SMeshHeader mesh_header = headers [ i ];
-        bin_help.seek ( odbp_start + mesh_header.info_ptr + 8 );
+        bin_help.seek ( odbp_start + mesh_header.info_ptr + 4 );
+        mesh_header.fv_flags = bin_help.read_uint ( );
         mesh_header.vert_ptr = bin_help.read_uint ( );
         mesh_header.vert_count = bin_help.read_uint ( );
         mesh_header.face_ptr = bin_help.read_uint ( );
@@ -102,13 +104,28 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
         mesh->m_verts = new glm::vec3 [ mesh->m_vert_num ];
         mesh->m_faces = new int [ mesh->m_face_num ];
         mesh->m_uvs = new glm::vec2 [ mesh->m_vert_num ];
-        if ( type == eODBP_TYPE_NORMAL ) {
-            mesh->m_norms = new glm::vec3 [ mesh->m_vert_num ];
+
+        int pos_flag = ( mesh_header.fv_flags & 0xe );
+        int normal_flag = ( mesh_header.fv_flags & 0x10 );
+        int color1_flag = ( mesh_header.fv_flags & 0x40 );
+        int color2_flag = ( mesh_header.fv_flags & 0x80 );
+        int uv_count = ( mesh_header.fv_flags >> 8 & 0xf );
+
+        if ( pos_flag == 2 ) {
+            // XYZ
+        }
+        else if ( pos_flag == 4 || pos_flag == 6 ) {
+            // XYZW?
+        }
+        else if ( pos_flag == 8 ) {
             mesh->m_weights = new glm::vec4 [ mesh->m_vert_num ];
-            mesh->set_flag ( e_mesh_attr::normals );
             mesh->set_flag ( e_mesh_attr::weights );
         }
-        if ( type == eODBP_TYPE_STAGE ) {
+        if ( normal_flag ) {
+            mesh->m_norms = new glm::vec3 [ mesh->m_vert_num ];
+            mesh->set_flag ( e_mesh_attr::normals );
+        }
+        if ( color1_flag ) {
             mesh->m_vert_colors = new glm::vec4 [ mesh->m_vert_num ];
             mesh->set_flag ( e_mesh_attr::colors );
         }
@@ -119,7 +136,7 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
             float y = bin_help.read_float ( );
             float z = bin_help.read_float ( );
             mesh->m_verts[ v ] = glm::vec3 ( x, y, z );
-            if ( type == eODBP_TYPE_NORMAL )
+            if ( pos_flag == 8 )
             {
                 float weight1 = bin_help.read_float ( );
                 unsigned char b1 = bin_help.read_uchar ( );
@@ -135,7 +152,7 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
             else
             {
             }
-            if ( type == eODBP_TYPE_STAGE )
+            if ( color1_flag )
             {
                 float b = ( float ) bin_help.read_uchar ( ) / 0xff;
                 float g = ( float ) bin_help.read_uchar ( ) / 0xff;
@@ -146,7 +163,7 @@ std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, c
             else
             {
             }
-            if ( type == eODBP_TYPE_NORMAL )
+            if ( normal_flag )
             {
                 float nx = bin_help.read_float ( );
                 float ny = bin_help.read_float ( );

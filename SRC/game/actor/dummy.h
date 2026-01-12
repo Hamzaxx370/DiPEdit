@@ -1,8 +1,9 @@
 #pragma once
 
-#include "particle.h"
 #include "engine\actor\entity.h"
-#include "game\core\pmm_data.h"
+#include "game\sys\ogre\pmm\pmm_data.h"
+
+#include <string>
 
 class cact_dummy : public cact_entity {
 public:

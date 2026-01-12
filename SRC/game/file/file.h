@@ -8,14 +8,14 @@
 #include "glm\glm\gtc\type_ptr.hpp"
 
 #include "engine\sys\render\render.h"
-#include "game\core\pmm_data.h"
+#include "game\sys\ogre\pmm\pmm_data.h"
 
 #include <iostream>
 #include <vector>
 
 struct sparticle;
 
-std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, int type, const char* VSh, const char* FSh );
+std::vector<cmesh_ref> read_ogre_mesh_file ( const char* szFileName, const char* VSh, const char* FSh );
 std::vector <cskel_bone> read_ogre_bones ( const char* filename );
 std::vector<ctex_ref> read_ogre_tex_file ( const char* filename );
 cskel_anim* read_ogre_motion ( const char* filename );

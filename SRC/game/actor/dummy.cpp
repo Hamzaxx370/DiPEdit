@@ -4,46 +4,8 @@
 
 #include "game\core\game.h"
 #include "game\file\file.h"
-#include "game\core\particle.h"
-#include "particle.h"
-
-sparticle_data get_bone_data ( ceffect_authoring effect, ccomponent_anim* animator ) {
-	sparticle_data data;
-
-	data.m_pos = effect.m_xyz;
-	data.m_normal = effect.m_normal;
-	data.m_tmp0 = effect.m_tmp0;
-
-	bool motion = ( effect.m_tmp1_int & 0x00000100 ) != 0;
-
-	unsigned int orient_flags;
-	float tmp1_z = effect.m_tmp1.z;
-	if ( tmp1_z >= 2147483600.0f ) {
-		orient_flags = ( unsigned int ) ( ( int ) ( tmp1_z - 2147483600.0f ) + 0x80000000 );
-	}
-	else {
-		orient_flags = ( unsigned int ) tmp1_z;
-	}
-	bool orient = ( orient_flags & 0x1 ) != 0;
-
-	int bone_idx = effect.m_bone_idx;
-	if ( bone_idx >= 0 ) {
-		const cskel_bone& bone = animator->m_bones [ bone_idx ];
-		glm::mat4 bone_mtx = ( bone.m_final * bone.m_rest );
-
-		data.m_pos = glm::vec3 ( bone_mtx * glm::vec4 ( data.m_pos, 1.0f ) );
-
-		if ( motion ) {
-			glm::mat3 normal_mtx = glm::transpose ( glm::inverse ( glm::mat3 ( bone_mtx ) ) );
-			data.m_normal = normal_mtx * data.m_normal;
-		}
-
-		glm::mat3 rot_mtx = glm::mat3 ( bone_mtx );
-		data.m_tmp0 = rot_mtx * data.m_tmp0;
-	}
-
-	return data;
-}
+#include "game\sys\ogre\particle\particle.h"
+#include "authoring_common.h"
 
 cact_dummy::cact_dummy ( cact_base* p_parent, e_actid actid ) : cact_entity ( p_parent, actid ) {
 	m_animator = new ccomponent_anim ( );
@@ -58,7 +20,7 @@ cact_dummy::cact_dummy ( cact_base* p_parent, e_actid actid ) : cact_entity ( p_
 	}
 
 	m_draw = new cdraw_normal ( );
-	m_draw->m_meshes = read_ogre_mesh_file ( ( "default\\" + mesh_name + ".ome" ).c_str ( ), 0, "Shaders\\vertex_general.glsl", "Shaders\\fragment_general.glsl" );
+	m_draw->m_meshes = read_ogre_mesh_file ( ( "default\\" + mesh_name + ".ome" ).c_str ( ), "Shaders\\vertex_general.glsl", "Shaders\\fragment_general.glsl" );
 
 	for ( auto& ref : m_draw->m_meshes ) {
 		cmesh_buffer* mesh = ref.get ( );
@@ -93,7 +55,7 @@ void cact_dummy::clear_particles ( ) {
 		if ( id == ( e_actid ) -1 )
 			continue;
 
-		cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( id );
+		cact_effect* p = ( cact_effect* ) cengine::get ( )->act_man->get_actor ( id );
 
 		if ( !p )
 			continue;
@@ -134,39 +96,15 @@ void cact_dummy::update_particle_logic ( ) {
 
 		if ( id == ( e_actid ) -1 ) {
 			if ( now >= effect.m_start && now <= effect.m_end ) {
-
-				std::string ptcl_name = get_ptcl_from_id ( effect.m_id );
-
-				cact_particle* p = new cact_particle (
-					cengine::get ( )->act_man->get_actor ( e_actid::particle_manager ),
-					cengine::get ( )->act_man->get_free_id ( e_actid::particle_start, e_actid::particle_end ),
-					cgame::get ( )->m_particle_path + "\\" + ptcl_name + ".ptcl"
-				);
-
-				m_particles [ i ] = p->m_act_id;
-
-				p->create_with_param ( effect, m_act_id );
-
-				for ( auto& ptcl : p->m_particles ) {
-					ptcl->set_particle_data ( get_bone_data ( effect, m_animator ) );
-				}
+				m_particles [i ] = create_effect ( effect, this );
 			}
 		}
 		else {
-			cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( id );
-			if ( p ) {
-				p->m_pause_particle_exec = m_pause_motion;
+			cact_effect* e = ( cact_effect* ) cengine::get ( )->act_man->get_actor ( id );
+			if ( e ) {
+				e->m_pause_exec = m_pause_motion;
 
-				if ( now > effect.m_end || now < effect.m_start ) {
-				}
-
-				if ( ( effect.m_tmp1_int & 0x00000001 ) != 0 ) {
-					for ( auto& particle : p->m_particles ) {
-						particle->set_particle_data (
-							get_bone_data ( effect, m_animator )
-						);
-					}
-				}
+				update_effect ( effect, this, id );
 			}
 		}
 	}
@@ -195,7 +133,7 @@ void cact_dummy::set_time ( float target_time ) {
 		for ( auto& id : m_particles ) {
 			if ( id == ( e_actid ) -1 ) continue;
 
-			cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( id );
+			cact_effect* p = ( cact_effect* ) cengine::get ( )->act_man->get_actor ( id );
 			if ( p ) {
 				p->skip_time ( dt );
 			}

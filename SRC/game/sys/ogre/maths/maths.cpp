@@ -1,4 +1,4 @@
-#include "ogre_maths.h"
+#include "maths.h"
 
 static unsigned int rnd_seed = 1;
 

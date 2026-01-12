@@ -12,10 +12,12 @@
 #include "engine\core\components.h"
 #include "engine\sys\actor\actor.h"
 #include "engine\sys\render\render.h"
-#include "particle.h"
+
+#include "game\sys\ogre\particle\particle.h"
+#include "game\sys\ogre\maths\maths.h"
 #include "game\file\file.h"
 #include "game\actor\dummy.h"
-#include "ogre_maths.h"
+#include "game\actor\authoring_common.h"
 
 #include "imgui\imgui.h"
 #include "imgui\backends\imgui_impl_glfw.h"
@@ -157,9 +159,9 @@ namespace fs = std::filesystem;
 cgame* cgame::instance = nullptr;
 
 cgame::cgame ( ) {
-	m_particle_path = "";
-	m_got_folder = false;
-	m_is_y2 = false;
+    m_particle_path = "";
+    m_got_folder = false;
+    m_is_y2 = false;
     m_particle_looped = false;
 
     m_got_motion = false;
@@ -174,9 +176,9 @@ cgame::~cgame ( ) {
 }
 
 void cgame::init ( ) {
-	init_ogre_maths ( );
-	cengine::get ( )->act_man->init ( e_actid::num );
-	cengine::get ( )->act_man->m_root_act = new cact_game ( nullptr, e_actid::root );
+    init_ogre_maths ( );
+    cengine::get ( )->act_man->init ( e_actid::num );
+    cengine::get ( )->act_man->m_root_act = new cact_game ( nullptr, e_actid::root );
 
     cengine::get ( )->render_man->set_scr_offset ( s_left_panel_w, s_top_bar_h );
     cengine::get ( )->render_man->set_scr_offset_r ( s_right_panel_w, 0 );
@@ -206,7 +208,7 @@ void cgame::run ( )
         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
     ImGui::SetNextWindowPos ( viewport->WorkPos );
-    ImGui::SetNextWindowSize ( ImVec2 ( s_left_panel_w , viewport->WorkSize.y ) );
+    ImGui::SetNextWindowSize ( ImVec2 ( s_left_panel_w, viewport->WorkSize.y ) );
     ImGui::Begin ( "Main Window", nullptr, main_window_flags );
 
     if ( ImGui::Button ( "Open PTCL Folder" ) ) {
@@ -242,7 +244,7 @@ void cgame::run ( )
 
     if ( ok )
         ImGuiFileDialog::Instance ( )->OpenDialog ( "ChoosePmmFile", "Choose PMM file", ".dat" );
-    
+
     if ( ImGuiFileDialog::Instance ( )->Display ( "ChoosePmmFile" ) ) {
         if ( ImGuiFileDialog::Instance ( )->IsOk ( ) ) {
             m_pmm_path = ImGuiFileDialog::Instance ( )->GetFilePathName ( );
@@ -285,7 +287,7 @@ void cgame::run ( )
             m_tex_list.clear ( );
             m_ptcl_info.clear ( );
 
-			cengine::get ( )->mesh_man->clear_mesh ( );
+            cengine::get ( )->mesh_man->clear_mesh ( );
             cengine::get ( )->tex_man->clear_tex ( );
 
             for ( auto& entry : fs::directory_iterator ( m_particle_path ) )
@@ -295,7 +297,7 @@ void cgame::run ( )
 
                     if ( m_mesh_list.size ( ) <= index ) m_mesh_list.resize ( index + 1 );
 
-                    m_mesh_list [ index ] = read_ogre_mesh_file ( entry.path ( ).string ( ).c_str ( ), 2, "Shaders\\vertex_general.glsl",
+                    m_mesh_list [ index ] = read_ogre_mesh_file ( entry.path ( ).string ( ).c_str ( ), "Shaders\\vertex_general.glsl",
                         "Shaders\\fragment_particle.glsl" );
                 }
                 else if ( entry.path ( ).extension ( ).string ( ) == ".TXB" ) {
@@ -1036,7 +1038,7 @@ void cgame::draw_ptcl_data ( ) {
                             e_param.m_texture_id,
                             m_tex_list
                         );
-                        
+
                         ImGui::InputFloat ( "Time Scale", &e_param.m_time_scale );
                         ImGui::InputFloat ( "Generate Rate", &e_param.m_frame_rate );
 

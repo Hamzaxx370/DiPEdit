@@ -34,6 +34,7 @@ public:
 
     // Constructor now accepts a write mode (default is false/read-only)
     cbinary_helper ( const char* filepath, bool write_mode = false );
+    cbinary_helper ( ) { };
     ~cbinary_helper ( );
 
     void set_buffer_mode ( char* Buffer, int Size );

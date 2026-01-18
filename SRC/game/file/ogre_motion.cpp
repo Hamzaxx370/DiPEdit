@@ -70,26 +70,33 @@ void get_rot ( cbinary_helper& bin_help, cskel_rot_key& keyframe, eKEYFRAME_TYPE
 	keyframe.m_rot = glm::normalize ( inverse );
 }
 
-cskel_anim* read_ogre_motion ( const char* filename ) {
-	cbinary_helper bin_help = cbinary_helper ( filename );
+cskel_anim* read_ogre_motion ( const char* filename, cbinary_helper* curr_helper ) {
+	std::vector<cmesh_ref> names;
+
+	cbinary_helper* bin_help;
+
+	if ( curr_helper )
+		bin_help = curr_helper;
+	else
+		bin_help = new cbinary_helper ( filename );
 
 	cskel_anim* motion = new cskel_anim ( );
 
 	std::vector<somt_bone> bone_info;
 
-	bin_help.seek ( 0 );
+	bin_help->seek ( 0 );
 	bool is_short_frames = false;
 
 	somt_hdr header;
 
-	header.m_anim_pointer = bin_help.read_uint ( );
-	header.m_keyframe_pointer = bin_help.read_uint ( );
-	header.m_anim_count = bin_help.read_uint ( );
-	header.m_flag_pointer = bin_help.read_uint ( );
-	header.m_frame_count = bin_help.read_uint ( );
-	header.m_pointers = bin_help.read_uint ( );
-	header.m_bone_count = bin_help.read_uint ( );
-	header.m_flag = bin_help.read_uint ( );
+	header.m_anim_pointer = bin_help->read_uint ( );
+	header.m_keyframe_pointer = bin_help->read_uint ( );
+	header.m_anim_count = bin_help->read_uint ( );
+	header.m_flag_pointer = bin_help->read_uint ( );
+	header.m_frame_count = bin_help->read_uint ( );
+	header.m_pointers = bin_help->read_uint ( );
+	header.m_bone_count = bin_help->read_uint ( );
+	header.m_flag = bin_help->read_uint ( );
 
 	motion->m_frame_num = header.m_frame_count;
 	motion->m_frame_rate = 30.0f;
@@ -102,27 +109,27 @@ cskel_anim* read_ogre_motion ( const char* filename ) {
 		is_short_frames = true;
 	}
 
-	bin_help.seek ( header.m_flag_pointer );
+	bin_help->seek ( header.m_flag_pointer );
 	for ( int f = 0; f < header.m_bone_count; f++ )
 	{
-		bone_info [ f ].m_mot_type = ( eKEYFRAME_TYPE ) bin_help.read_uchar ( );
+		bone_info [ f ].m_mot_type = ( eKEYFRAME_TYPE ) bin_help->read_uchar ( );
 	}
-	bin_help.seek ( header.m_pointers );
+	bin_help->seek ( header.m_pointers );
 	for ( int f = 0; f < header.m_bone_count; f++ )
 	{
 		if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_POSITION_ROTATION )
 		{
-			bone_info [ f ].m_pos_ptr = bin_help.read_uint ( );
-			bone_info [ f ].m_quat_ptr = bin_help.read_uint ( );
+			bone_info [ f ].m_pos_ptr = bin_help->read_uint ( );
+			bone_info [ f ].m_quat_ptr = bin_help->read_uint ( );
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION_XY || bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION )
 		{
 			bone_info [ f ].m_pos_ptr = -1;
-			bone_info [ f ].m_quat_ptr = bin_help.read_uint ( );
+			bone_info [ f ].m_quat_ptr = bin_help->read_uint ( );
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_PATTERN )
 		{
-			bin_help.read_uint ( );
+			bin_help->read_uint ( );
 			bone_info [ f ].m_pos_ptr = -1;
 			bone_info [ f ].m_quat_ptr = -1;
 		}
@@ -136,17 +143,17 @@ cskel_anim* read_ogre_motion ( const char* filename ) {
 	{
 		if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_POSITION_ROTATION )
 		{
-			bone_info [ f ].m_pos_time_ptr = bin_help.read_uint ( );
-			bone_info [ f ].m_quat_time_ptr = bin_help.read_uint ( );
+			bone_info [ f ].m_pos_time_ptr = bin_help->read_uint ( );
+			bone_info [ f ].m_quat_time_ptr = bin_help->read_uint ( );
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION_XY || bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION )
 		{
 			bone_info [ f ].m_pos_time_ptr = -1;
-			bone_info [ f ].m_quat_time_ptr = bin_help.read_uint ( );
+			bone_info [ f ].m_quat_time_ptr = bin_help->read_uint ( );
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_PATTERN )
 		{
-			bin_help.read_uint ( );
+			bin_help->read_uint ( );
 			bone_info [ f ].m_pos_time_ptr = -1;
 			bone_info [ f ].m_quat_time_ptr = -1;
 		}
@@ -162,24 +169,24 @@ cskel_anim* read_ogre_motion ( const char* filename ) {
 		{
 			if ( is_short_frames )
 			{
-				bone_info [ f ].m_pos_num = bin_help.read_ushort ( );
-				bone_info [ f ].m_quat_num = bin_help.read_ushort ( );
+				bone_info [ f ].m_pos_num = bin_help->read_ushort ( );
+				bone_info [ f ].m_quat_num = bin_help->read_ushort ( );
 			}
 			else
 			{
-				bone_info [ f ].m_pos_num = bin_help.read_uchar ( );
-				bone_info [ f ].m_quat_num = bin_help.read_uchar ( );
+				bone_info [ f ].m_pos_num = bin_help->read_uchar ( );
+				bone_info [ f ].m_quat_num = bin_help->read_uchar ( );
 			}
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION_XY || bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION )
 		{
 			if ( is_short_frames )
 			{
-				bone_info [ f ].m_quat_num = bin_help.read_ushort ( );
+				bone_info [ f ].m_quat_num = bin_help->read_ushort ( );
 			}
 			else
 			{
-				bone_info [ f ].m_quat_num = bin_help.read_uchar ( );
+				bone_info [ f ].m_quat_num = bin_help->read_uchar ( );
 			}
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_NONE )
@@ -196,44 +203,44 @@ cskel_anim* read_ogre_motion ( const char* filename ) {
 	{
 		if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_POSITION_ROTATION )
 		{
-			bin_help.seek ( bone_info [ f ].m_pos_time_ptr );
+			bin_help->seek ( bone_info [ f ].m_pos_time_ptr );
 			for ( int t = 0; t < bone_info [ f ].m_pos_num; t++ )
 			{
 				if ( is_short_frames )
 				{
-					motion->m_bone_anims [ f ].m_pos_keys [ t ].m_time = ( float ) bin_help.read_ushort ( );
+					motion->m_bone_anims [ f ].m_pos_keys [ t ].m_time = ( float ) bin_help->read_ushort ( );
 				}
 				else
 				{
-					motion->m_bone_anims [ f ].m_pos_keys [ t ].m_time = bin_help.read_uchar ( );
+					motion->m_bone_anims [ f ].m_pos_keys [ t ].m_time = bin_help->read_uchar ( );
 				}
 			}
-			bin_help.seek ( bone_info [ f ].m_quat_time_ptr );
+			bin_help->seek ( bone_info [ f ].m_quat_time_ptr );
 			for ( int t = 0; t < bone_info [ f ].m_quat_num; t++ )
 			{
 				if ( is_short_frames )
 				{
-					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help.read_ushort ( );
+					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help->read_ushort ( );
 				}
 				else
 				{
-					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help.read_uchar ( );
+					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help->read_uchar ( );
 				}
 			}
 
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION_XY || bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION )
 		{
-			bin_help.seek ( bone_info [ f ].m_quat_time_ptr );
+			bin_help->seek ( bone_info [ f ].m_quat_time_ptr );
 			for ( int t = 0; t < bone_info [ f ].m_quat_num; t++ )
 			{
 				if ( is_short_frames )
 				{
-					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help.read_ushort ( );
+					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help->read_ushort ( );
 				}
 				else
 				{
-					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help.read_uchar ( );
+					motion->m_bone_anims [ f ].m_rot_keys [ t ].m_time = bin_help->read_uchar ( );
 				}
 			}
 		}
@@ -246,38 +253,41 @@ cskel_anim* read_ogre_motion ( const char* filename ) {
 
 		if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_POSITION_ROTATION )
 		{
-			bin_help.seek ( bone_info [ f ].m_pos_ptr );
+			bin_help->seek ( bone_info [ f ].m_pos_ptr );
 
 			for ( int t = 0; t < bone_info [ f ].m_pos_num; t++ )
 			{
-				get_pos ( bin_help, motion->m_bone_anims [ f ].m_pos_keys [ t ], eKEYFRAME_TYPE_POSITION_ROTATION );
+				get_pos ( *bin_help, motion->m_bone_anims [ f ].m_pos_keys [ t ], eKEYFRAME_TYPE_POSITION_ROTATION );
 			}
-			bin_help.seek ( bone_info [ f ].m_quat_ptr );
+			bin_help->seek ( bone_info [ f ].m_quat_ptr );
 			for ( int t = 0; t < bone_info [ f ].m_quat_num; t++ )
 			{
-				get_rot ( bin_help, motion->m_bone_anims [ f ].m_rot_keys [ t ], eKEYFRAME_TYPE_ROTATION );
+				get_rot ( *bin_help, motion->m_bone_anims [ f ].m_rot_keys [ t ], eKEYFRAME_TYPE_ROTATION );
 			}
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION )
 		{
-			bin_help.seek ( bone_info [ f ].m_quat_ptr );
+			bin_help->seek ( bone_info [ f ].m_quat_ptr );
 			for ( int t = 0; t < bone_info [ f ].m_quat_num; t++ )
 			{
-				get_rot ( bin_help, motion->m_bone_anims [ f ].m_rot_keys [ t ], eKEYFRAME_TYPE_ROTATION );
+				get_rot ( *bin_help, motion->m_bone_anims [ f ].m_rot_keys [ t ], eKEYFRAME_TYPE_ROTATION );
 			}
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_ROTATION_XY )
 		{
-			bin_help.seek ( bone_info [ f ].m_quat_ptr );
+			bin_help->seek ( bone_info [ f ].m_quat_ptr );
 			for ( int t = 0; t < bone_info [ f ].m_quat_num; t++ )
 			{
-				get_rot ( bin_help, motion->m_bone_anims [ f ].m_rot_keys [ t ], eKEYFRAME_TYPE_ROTATION_XY );
+				get_rot ( *bin_help, motion->m_bone_anims [ f ].m_rot_keys [ t ], eKEYFRAME_TYPE_ROTATION_XY );
 			}
 		}
 		else if ( bone_info [ f ].m_mot_type == eKEYFRAME_TYPE_NONE )
 		{
 		}
 	}
+
+	if ( !curr_helper ) delete bin_help;
+
 	return motion;
 }
 

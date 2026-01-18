@@ -69,7 +69,6 @@ void cact_camera::exec1 ( ) {
 		g_proj = glm::perspective ( glm::radians ( m_fov ), ( float ) ( 600.0 / 800.0 ), 0.1f, 10000.0f );
 	else
 		g_proj = glm::perspective ( glm::radians ( m_fov ), ( float ) width / ( float ) height, 0.1f, 10000.0f );
-
 }
 
 // Called every frame
@@ -103,4 +102,9 @@ void cact_camera::handle_mouse_input ( ) {
 	else {
 		m_orbiting = false;
 	}
+}
+
+void cact_camera::set_target ( glm::vec3 v ) {
+	m_target = v;
+	m_lookat = v;
 }

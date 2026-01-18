@@ -45,6 +45,7 @@ public:
 	void exec1 ( ) override;
 
 	void handle_mouse_input ( );
+	void set_target ( glm::vec3 v );
 };
 
 #endif

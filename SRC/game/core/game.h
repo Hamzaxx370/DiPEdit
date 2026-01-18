@@ -15,17 +15,16 @@
 enum class e_actid : int {
 	root,
 	camera,
-	dummy,
+	yact_manager,
+	yact_entity_start,
+	yact_entity_end = yact_entity_start + 32,
+	dummy, // Motion authoring dummy
 	test_particle,
 	particle_manager,
 	particle_start,
 	particle_end = particle_start + 128, 
 	num
 };
-
-// Entity types
-#define ENTITY_PLAYER 0
-#define ENTITY_ENEMY 1
 
 struct sptcl_info {
 	std::string name;
@@ -55,11 +54,14 @@ public:
 	bool m_got_motion;
 	bool m_motion_looped;
 
+	std::string m_yact_path;
+
 	cgame ( );
 	~cgame ( );
 
 	void init ( );
 	void run ( );
+
 	void populate_info ( );
 	void draw_ptcl_tree ( );
 	void draw_ptcl_data ( );

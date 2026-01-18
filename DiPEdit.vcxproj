@@ -302,8 +302,10 @@
     <ClCompile Include="SRC\game\actor\dummy.cpp" />
     <ClCompile Include="SRC\game\actor\authoring_common.cpp" />
     <ClCompile Include="SRC\game\actor\root.cpp" />
+    <ClCompile Include="SRC\game\actor\yact_manager.cpp" />
     <ClCompile Include="SRC\game\core\file_lists.cpp" />
     <ClCompile Include="SRC\game\core\game.cpp" />
+    <ClCompile Include="SRC\game\file\ogre_yact.cpp" />
     <ClCompile Include="SRC\game\sys\ogre\maths\maths.cpp" />
     <ClCompile Include="SRC\game\sys\ogre\particle\particle.cpp" />
     <ClCompile Include="SRC\game\sys\ogre\pmm\pmm_data.cpp" />
@@ -323,6 +325,8 @@
     <ClCompile Include="SRC\game\implot\implot_demo.cpp" />
     <ClCompile Include="SRC\game\implot\implot_items.cpp" />
     <ClCompile Include="SRC\game\sys\ogre\track\track.cpp" />
+    <ClCompile Include="SRC\game\sys\ogre\yact\yact_ogre.cpp" />
+    <ClCompile Include="SRC\game\sys\ogre\yact\yact_ogre2.cpp" />
     <ClCompile Include="SRC\main.cpp" />
     <ClCompile Include="SRC\engine\sys\collision\manager.cpp" />
     <ClCompile Include="SRC\engine\sys\render\light.cpp" />
@@ -349,6 +353,7 @@
     <ClInclude Include="SRC\game\actor\root.h" />
     <ClInclude Include="SRC\engine\sys\collision\collision.h" />
     <ClInclude Include="SRC\engine\sys\render\render.h" />
+    <ClInclude Include="SRC\game\actor\yact_manager.h" />
     <ClInclude Include="SRC\game\core\game.h" />
     <ClInclude Include="SRC\game\sys\ogre\maths\maths.h" />
     <ClInclude Include="SRC\game\sys\ogre\effector\effector.h" />
@@ -363,6 +368,8 @@
     <ClInclude Include="SRC\game\implot\implot.h" />
     <ClInclude Include="SRC\game\implot\implot_internal.h" />
     <ClInclude Include="SRC\game\sys\ogre\track\track.h" />
+    <ClInclude Include="SRC\game\sys\ogre\yact\yact_ogre.h" />
+    <ClInclude Include="SRC\game\sys\ogre\yact\yact_ogre2.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

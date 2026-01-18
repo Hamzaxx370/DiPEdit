@@ -1034,8 +1034,6 @@ void cdraw_particle::draw ( ) {
     }
 }
 
-// Little helper section for getting particles through ids
-
 #include <filesystem>
 namespace fs = std::filesystem;
 

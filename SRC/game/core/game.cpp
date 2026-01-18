@@ -18,6 +18,8 @@
 #include "game\file\file.h"
 #include "game\actor\dummy.h"
 #include "game\actor\authoring_common.h"
+#include "game\actor\yact_manager.h"
+#include "game\actor\camera.h"
 
 #include "imgui\imgui.h"
 #include "imgui\backends\imgui_impl_glfw.h"
@@ -28,6 +30,9 @@
 #include "game\implot\implot.h"
 
 #include <filesystem>
+#include <algorithm>
+
+static float seed = frandom ( );
 
 static sparticle_element_param default_element ( )
 {
@@ -211,12 +216,16 @@ void cgame::run ( )
     ImGui::SetNextWindowSize ( ImVec2 ( s_left_panel_w, viewport->WorkSize.y ) );
     ImGui::Begin ( "Main Window", nullptr, main_window_flags );
 
+    //if ( ImGui::Button ( "Open YAct Folder" ) ) {
+    //    ImGuiFileDialog::Instance ( )->OpenDialog ( "ChooseYActFolder", "Choose a folder", nullptr );
+    //}
+
     if ( ImGui::Button ( "Open PTCL Folder" ) ) {
         ImGuiFileDialog::Instance ( )->OpenDialog ( "ChoosePTCLFolder", "Choose a folder", nullptr );
     }
 
     if ( ImGui::Button ( "Open Motion" ) ) {
-        ImGuiFileDialog::Instance ( )->OpenDialog ( "ChooseMotFile", "Choose Motion file", ".dat" );
+        ImGuiFileDialog::Instance ( )->OpenDialog ( "ChooseMotFile", "Choose Motion file", ".dat,.omt" );
     }
 
     cact_particle* p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
@@ -281,6 +290,10 @@ void cgame::run ( )
                 d->set_exec_flag ( e_act_exec::done );
             }
 
+            cact_camera* cam = ( cact_camera* ) cengine::get ( )->act_man->get_actor ( e_actid::camera );
+
+            cam->set_target ( glm::vec3 ( 0.0f ) );
+
             m_got_folder = true;
 
             m_mesh_list.clear ( );
@@ -311,6 +324,24 @@ void cgame::run ( )
         }
         ImGuiFileDialog::Instance ( )->Close ( );
     }
+
+    /*
+    if ( ImGuiFileDialog::Instance ( )->Display ( "ChooseYActFolder" ) ) {
+        if ( ImGuiFileDialog::Instance ( )->IsOk ( ) ) {
+            m_yact_path = ImGuiFileDialog::Instance ( )->GetCurrentPath ( );
+
+            cact_yact_manager* ym = ( cact_yact_manager* ) cengine::get ( )->act_man->get_actor ( e_actid::yact_manager );
+
+            if ( ym ) ym->reset ( );
+            else ym = new cact_yact_manager (
+                cengine::get ( )->act_man->get_actor ( e_actid::root ),
+                e_actid::yact_manager
+            );
+
+        }
+        ImGuiFileDialog::Instance ( )->Close ( );
+    }
+    */
 
     p = ( cact_particle* ) cengine::get ( )->act_man->get_actor ( e_actid::test_particle );
 
@@ -454,6 +485,17 @@ void cgame::draw_ptcl_tree ( )
                         p->m_particle_data = load_particle_file ( p->m_ptcl_name );
                         p->create_blank ( );
                     }
+
+                    cact_dummy* d = ( cact_dummy* ) cengine::get ( )->act_man->get_actor ( e_actid::dummy );
+
+                    if ( d ) {
+                        d->set_exec_flag ( e_act_exec::done );
+                        d->set_exec_flag ( e_act_exec::pause );
+                    }
+
+                    cact_camera* cam = ( cact_camera* ) cengine::get ( )->act_man->get_actor ( e_actid::camera );
+
+                    cam->set_target ( glm::vec3 ( 0.0f ) );
                 }
             }
         }
@@ -503,6 +545,10 @@ const char* element_effect_names [ ] = {
     "Velocity", "Acceleration"
 };
 
+const char* uv_type_names [ ] = {
+    "Normal", "Pattern"
+};
+
 static glm::vec4 eval_param_value (
     const sparticle_element_param& p,
     const glm::vec4& base,
@@ -524,6 +570,14 @@ static glm::vec4 eval_param_value (
 }
 
 static void ensure_final_param ( std::vector<sparticle_element_param>& params ) {
+
+    std::sort ( 
+        params.begin ( ), 
+        params.end ( ), 
+        [ ] ( const sparticle_element_param& a, const sparticle_element_param& b ) { 
+            return a.m_end_time_scaled < b.m_end_time_scaled; 
+        } );
+
     if ( params.empty ( ) ) {
         params.push_back ( default_element ( ) );
     }
@@ -543,127 +597,191 @@ static const char** get_channel_names ( e_element_type type ) {
     case e_element_type::color_8bit:
     case e_element_type::color_7bit: return chan_c;
     case e_element_type::angle: return chan_r;
+    case e_element_type::pattern:
     case e_element_type::uv: return chan_uv;
     default: return chan_s;
     }
 }
 
-void draw_improved_curve_editor ( std::vector<sparticle_element_param>& params ) {
+static void get_channel_min_max ( e_element_type type, float& min, float& max ) {
+    switch ( type ) {
+    case e_element_type::scale: 
+        min = -100.0f;
+        max = 100.0f;
+        break;
+    case e_element_type::color_8bit:
+    case e_element_type::color_7bit:
+        min = -255.0f;
+        max = 255.0f;
+        break;
+    case e_element_type::angle:
+        min = -65535.0f;
+        max = 65535.0f;
+        break;
+    case e_element_type::pattern:
+    case e_element_type::uv:
+        min = -1.0f;
+        max = 1.0f;
+        break;
+    default:
+        min = -100.0f;
+        max = 100.0f;
+        break;
+    }
+}
+
+void draw_param_curve_editor ( std::vector<sparticle_element_param>& params, sparticle_emitter_param& e_param ) {
     if ( params.empty ( ) ) return;
+    ensure_final_param ( params );
 
     static bool show_channels [ 4 ] = { true, true, true, true };
     static int active_channel = 0;
-    static int mode = 0; // 0: Value, 1: Velocity, 2: Accel
-    static bool enable_snapping = false;
-    static int hovered_pt = -1;
-    static int selected_pt = -1;
+    static float y_min = -5.0f;
+    static float y_max = 5.0f;
 
-    const char** chan_names = get_channel_names ( ( e_element_type ) params [ 0 ].m_type );
-    const char* mode_names [ ] = { "Value", "Velocity", "Acceleration" };
+    static int selected_pt_idx = -2;
+    static int hovered_pt_idx = -2;
 
-    // --- Toolbar ---
-    ImGui::BeginChild ( "EditorToolbar", ImVec2 ( 0, 35 ), true );
-    //ImGui::Checkbox ( "Snap", &enable_snapping ); ImGui::SameLine ( );
-    ImGui::SetNextItemWidth ( 120 );
-    ImGui::Combo ( "Mode", &mode, mode_names, 3 ); ImGui::SameLine ( );
+    e_element_type type = ( e_element_type ) params [ 0 ].m_type;
+    const char** chan_names = get_channel_names ( type );
 
+    float total_life = e_param.m_life_time;
+
+    get_channel_min_max ( type, y_min, y_max );
+
+    ImGui::BeginChild ( "CurveToolbar", ImVec2 ( 0, 35 ), true );
     for ( int i = 0; i < 4; ++i ) {
         if ( strcmp ( chan_names [ i ], "None" ) == 0 ) continue;
         ImGui::Checkbox ( chan_names [ i ], &show_channels [ i ] ); ImGui::SameLine ( );
     }
-
-    if ( ImGui::Button ( "Fit to View" ) ) {
-        ImPlot::SetNextAxisToFit ( ImAxis_Y1 );
-        ImPlot::SetNextAxisToFit ( ImAxis_X1 );
-    }
+    if ( ImGui::Button ( "Fit View" ) ) { ImPlot::SetNextAxisToFit ( ImAxis_Y1 ); }
     ImGui::EndChild ( );
 
-    // --- Plot Area ---
-    if ( ImPlot::BeginPlot ( "##CurvePlot", ImVec2 ( -1, 350 ), ImPlotFlags_NoMenus ) ) {
-        ImPlot::SetupAxes ( "Time", "Value", ImPlotAxisFlags_None, ImPlotAxisFlags_None );
-        ImPlot::SetupAxesLimits ( 0, 1, -5, 5, ImGuiCond_Once );
-        ImPlot::SetupAxisLimits ( ImAxis_X1, 0.0, 1.0, ImPlotCond_Always );
+    if ( ImPlot::BeginPlot ( "##CURVEEDIT", ImVec2 ( -1, 400 ) ) ) {
+        ImPlot::SetupAxes ( "Normalized Time (0-1)", "Value", ImPlotAxisFlags_None, ImPlotAxisFlags_None );
+        ImPlot::SetupAxisLimits ( ImAxis_X1, 0, 1, ImPlotCond_Always );
+        ImPlot::SetupAxisLimits ( ImAxis_Y1, y_min, y_max, ImPlotCond_Once );
 
-        hovered_pt = -1;
-        ImVec4 colors [ 4 ] = { {1,0,0,1}, {0,1,0,1}, {0,0,1,1}, {1,1,1,1} };
+        float t_phys_max = ( total_life > 0 ) ? total_life : 1.0f;
+        ImVec4 colors [ 4 ] = { {1,0,0,1}, {0,1,0,1}, {0.2f,0.5f,1,1}, {1,1,1,1} };
 
-        for ( int ch = 0; ch < 4; ++ch ) {
+        ImPlotPoint plot_mouse_pos = ImPlot::GetPlotMousePos ( );
+        ImVec2 screen_mouse_pos = ImGui::GetMousePos ( );
+
+        hovered_pt_idx = -2;
+
+        auto is_hovered_in_pixels = [ & ] ( double x, double y, float radius ) -> bool {
+            ImVec2 pt_screen = ImPlot::PlotToPixels ( x, y );
+            float dx = screen_mouse_pos.x - pt_screen.x;
+            float dy = screen_mouse_pos.y - pt_screen.y;
+            return ( dx * dx + dy * dy ) < ( radius * radius );
+            };
+
+        for ( int ch = 0; ch < 4; ch++ ) {
             if ( !show_channels [ ch ] || strcmp ( chan_names [ ch ], "None" ) == 0 ) continue;
+            ImGui::PushID ( ch );
 
-            std::vector<double> xs, ys;
-            for ( auto& p : params ) {
-                xs.push_back ( p.m_end_time_scaled );
-                if ( mode == 1 ) ys.push_back ( p.m_mtx [ 4 + ch ] );
-                else if ( mode == 2 ) ys.push_back ( p.m_mtx [ 8 + ch ] );
-                else ys.push_back ( p.m_mtx [ ch ] ); // Simplified value mode
-            }
+            std::vector<double> plot_x, plot_y;
+            float p_start_t = 0.0f;
+            float p_start_val = params [ 0 ].m_mtx [ ch ];
 
-            double startx [ 2 ] = { 0.0, xs [ 0 ] };
-            double starty [ 2 ] = { 0.0, ys [ 0 ] };
-            ImPlot::SetNextLineStyle ( colors [ ch ], 2.0f );
-            ImPlot::PlotLine ( "##STARTSEG", startx, starty, 2 );
+            double sx = 0, sy = p_start_val;
+            if ( active_channel == ch ) {
+                if ( ImPlot::DragPoint ( 100, &sx, &sy, colors [ ch ], 7.0f ) ) {
+                    params [ 0 ].m_mtx [ ch ] = ( float ) sy;
+                }
 
-            // Draw line
-            ImPlot::SetNextLineStyle ( colors [ ch ], 2.0f );
-            ImPlot::PlotLine ( chan_names [ ch ], xs.data ( ), ys.data ( ), ( int ) xs.size ( ) );
-
-            // Handle Points for Active Channel
-            if ( ch == active_channel ) {
-                for ( int i = 0; i < params.size ( ); ++i ) {
-                    double px = xs [ i ];
-                    double py = ys [ i ];
-
-                    // Visual feedback for hover
-                    float pt_size = ( hovered_pt == i ) ? 8.0f : 4.0f;
-                    ImVec4 pt_col = ( hovered_pt == i ) ? ImVec4 ( 1, 1, 0, 1 ) : colors [ ch ];
-
-                    if ( ImPlot::DragPoint ( i, &px, &py, pt_col, pt_size ) ) {
-                        if ( enable_snapping ) px = round ( px * 20.0 ) / 20.0;
-                        params [ i ].m_end_time_scaled = glm::clamp ( ( float ) px, 0.0f, 1.0f );
-
-                        if ( mode == 1 ) params [ i ].m_mtx [ 4 + ch ] = ( float ) py;
-                        else if ( mode == 2 ) params [ i ].m_mtx [ 8 + ch ] = ( float ) py;
-                        else params [ i ].m_mtx [ ch ] = ( float ) py;
-                    }
-
-                    // Hover detection
-                    ImPlotPoint mouse = ImPlot::GetPlotMousePos ( );
-                    if ( fabs ( mouse.x - px ) < 0.02 && fabs ( mouse.y - py ) < 0.2 ) {
-                        hovered_pt = i;
-                        active_channel = ch; // Auto-focus channel on hover
-                    }
+                if ( is_hovered_in_pixels ( sx, sy, 8.0f ) ) {
+                    hovered_pt_idx = -1;
                 }
             }
+
+            for ( int i = 0; i < ( int ) params.size ( ); i++ ) {
+                sparticle_element_param& p = params [ i ];
+                float end_t = p.m_end_time_scaled;
+                float v = p.m_mtx [ 4 + ch ];
+                float a = ( p.m_effect_type == 1 ) ? p.m_mtx [ 8 + ch ] : 0.0f;
+
+                plot_x.clear ( ); plot_y.clear ( );
+                for ( int s = 0; s <= 20; s++ ) {
+                    float t_norm = p_start_t + ( ( float ) s / 20.0f ) * ( end_t - p_start_t );
+                    float dt = ( t_norm - p_start_t ) * t_phys_max;
+                    float val = p_start_val + ( v * dt ) + ( 0.5f * a * dt * dt );
+                    plot_x.push_back ( t_norm );
+                    plot_y.push_back ( val );
+                }
+
+                ImPlot::SetNextLineStyle ( colors [ ch ], ( active_channel == ch ) ? 3.0f : 1.0f );
+                ImPlot::PlotLine ( "##seg", plot_x.data ( ), plot_y.data ( ), ( int ) plot_x.size ( ) );
+
+                if ( active_channel == ch ) {
+                    double ex = end_t, ey = plot_y.back ( );
+
+                    // Acceleration Handle
+                    if ( ImPlot::DragPoint ( i * 2, &ex, &ey, colors [ ch ], 6.0f ) ) {
+                        p.m_end_time_scaled = glm::clamp ( ( float ) ex, p_start_t + 0.01f, 1.0f );
+                        float dt = ( p.m_end_time_scaled - p_start_t ) * t_phys_max;
+                        if ( dt > 0 ) {
+                            p.m_mtx [ 8 + ch ] = 2.0f * ( ( float ) ey - p_start_val - ( v * dt ) ) / ( dt * dt );
+                        }
+                    }
+
+                    if ( is_hovered_in_pixels ( ex, ey, 8.0f ) ) {
+                        hovered_pt_idx = i;
+                    }
+
+                    // Velocity Handle
+                    double tx = p_start_t + ( end_t - p_start_t ) * 0.2f;
+                    double ty = p_start_val + v * ( ( tx - p_start_t ) * t_phys_max );
+                    if ( ImPlot::DragPoint ( i * 2 + 1, &tx, &ty, ImVec4 ( 1, 1, 1, 0.5f ), 4.0f ) ) {
+                        float dt_h = ( ( float ) tx - p_start_t ) * t_phys_max;
+                        if ( dt_h > 0 ) p.m_mtx [ 4 + ch ] = ( ( float ) ty - p_start_val ) / dt_h;
+                    }
+                }
+
+                p_start_val = ( float ) plot_y.back ( );
+                p_start_t = end_t;
+            }
+            ImGui::PopID ( );
         }
 
-        // --- Input Handling ---
-        if ( ImGui::IsMouseClicked ( ImGuiMouseButton_Right ) ) {
-            if ( hovered_pt >= 0 ) {
-                selected_pt = hovered_pt;
-                ImGui::OpenPopup ( "PointCtx" );
-            }
-            else if ( ImPlot::IsPlotHovered ( ) ) {
-                // Add new point logic...
-                ImPlotPoint mp = ImPlot::GetPlotMousePos ( );
-                int idx = 0;
-                while ( idx < params.size ( ) && mp.x > params [ idx ].m_end_time_scaled ) idx++;
+        if ( ImGui::IsMouseClicked ( ImGuiMouseButton_Right ) && ImPlot::IsPlotHovered ( ) ) {
+            selected_pt_idx = hovered_pt_idx;
 
-                sparticle_element_param new_p = ( idx > 0 ) ? params [ idx - 1 ] : default_element ( );
-                new_p.m_end_time_scaled = ( float ) mp.x;
-                params.insert ( params.begin ( ) + idx, new_p );
-                selected_pt = idx;
-            }
+            if ( selected_pt_idx >= -1 ) ImGui::OpenPopup ( "EditPointPopup" );
+            else ImGui::OpenPopup ( "AddPointPopup" );
         }
 
-        // --- Context Menu ---
-        if ( ImGui::BeginPopup ( "PointCtx" ) ) {
-            ImGui::Text ( "Keyframe %d", selected_pt );
-            ImGui::Separator ( );
-            if ( ImGui::Selectable ( "Delete" ) && params.size ( ) > 1 ) {
-                params.erase ( params.begin ( ) + selected_pt );
+        if ( ImGui::BeginPopup ( "EditPointPopup" ) ) {
+            if ( selected_pt_idx == -1 ) {
+                ImGui::Text ( "Initial Value" );
+                ImGui::DragFloat ( "Value", &params [ 0 ].m_mtx [ active_channel ], 0.1f );
             }
-            if ( ImGui::Selectable ( "Duplicate" ) ) {
-                params.insert ( params.begin ( ) + selected_pt, params [ selected_pt ] );
+            else if ( selected_pt_idx >= 0 && selected_pt_idx < params.size ( ) ) {
+                auto& p = params [ selected_pt_idx ];
+                ImGui::Text ( "Segment %d", selected_pt_idx );
+                if ( selected_pt_idx < ( int ) params.size ( ) - 1 )
+                    ImGui::DragFloat ( "End Time", &p.m_end_time_scaled, 0.01f, 0.0f, 1.0f );
+
+                ImGui::DragFloat ( "Velocity", &p.m_mtx [ 4 + active_channel ], 0.1f );
+                ImGui::DragFloat ( "Acceleration", &p.m_mtx [ 8 + active_channel ], 0.1f );
+
+                ImGui::Separator ( );
+                if ( ImGui::Selectable ( "Delete Segment" ) && params.size ( ) > 1 ) {
+                    params.erase ( params.begin ( ) + selected_pt_idx );
+                    ensure_final_param ( params );
+                }
+            }
+            ImGui::EndPopup ( );
+        }
+
+        if ( ImGui::BeginPopup ( "AddPointPopup" ) ) {
+            ImGui::Text ( "Add segment at %.3f?", plot_mouse_pos.x );
+            if ( ImGui::Selectable ( "Confirm Add" ) ) {
+                sparticle_element_param new_p = params.back ( );
+                new_p.m_end_time_scaled = ( float ) plot_mouse_pos.x;
+                params.push_back ( new_p );
+                ensure_final_param ( params );
             }
             ImGui::EndPopup ( );
         }
@@ -671,206 +789,19 @@ void draw_improved_curve_editor ( std::vector<sparticle_element_param>& params )
         ImPlot::EndPlot ( );
     }
 
-    // Channel Selector (Bottom)
     ImGui::Text ( "Active Channel:" ); ImGui::SameLine ( );
-    ImGui::SameLine ( );
-    ImGui::PushID ( "ActiveChannelSelector" );
     for ( int i = 0; i < 4; ++i ) {
         if ( strcmp ( chan_names [ i ], "None" ) == 0 ) continue;
+        ImGui::PushID ( i );
         if ( ImGui::RadioButton ( chan_names [ i ], active_channel == i ) ) active_channel = i;
+        ImGui::PopID ( );
         ImGui::SameLine ( );
     }
-    ImGui::PopID ( );
     ImGui::NewLine ( );
 
     ensure_final_param ( params );
 }
 
-
-
-static void draw_param_curve_editor (
-    std::vector<sparticle_element_param>& params
-) {
-    if ( params.size ( ) < 1 )
-        return;
-
-    ensure_final_param ( params );
-
-    static int channel = 0;
-    static int mode = 0; // 0 = value, 1 = velocity, 2 = acceleration
-    static int hovered_point = -1;
-    static int selected_point = -1;
-
-    const char* mode_names [ ] = { "Value", "Velocity", "Acceleration" };
-
-    static const char** channel_names = get_channel_names ( ( e_element_type ) params [ 0 ].m_type );
-
-    ImGui::Combo ( "Channel", &channel, channel_names, IM_ARRAYSIZE ( channel_names ) );
-
-    ImGui::Combo ( "Curve", &mode, mode_names, 3 );
-
-    static std::vector<float> times;
-    static std::vector<float> values;
-
-    times.clear ( );
-    values.clear ( );
-
-    float t0 = 0.0f;
-
-    glm::vec4 base (
-        params [ 0 ].m_mtx [ 0 ],
-        params [ 0 ].m_mtx [ 1 ],
-        params [ 0 ].m_mtx [ 2 ],
-        params [ 0 ].m_mtx [ 3 ]
-    );
-
-    for ( int i = 0; i < params.size ( ); ++i ) {
-        float t1 = params [ i ].m_end_time_scaled;
-        float dt = t1 - t0;
-
-        if ( mode == 0 ) {
-            glm::vec4 v = eval_param_value ( params [ i ], base, dt );
-            values.push_back ( v [ channel ] );
-            base = v;
-        }
-        else if ( mode == 1 ) {
-            values.push_back ( params [ i ].m_mtx [ 4 + channel ] );
-        }
-        else {
-            values.push_back ( params [ i ].m_mtx [ 8 + channel ] );
-        }
-
-        times.push_back ( t1 );
-        t0 = t1;
-    }
-
-    if ( ImPlot::BeginPlot ( "Param Curve", ImVec2 ( -1, 300 ) ) ) {
-        ImPlot::SetupAxes ( "Time", "Value" );
-        ImPlot::SetupAxesLimits ( 0, 1, -10, 10, ImGuiCond_Once );
-        ImPlot::SetupAxisLimits ( ImAxis_X1, 0.0f, 1.0f, ImPlotCond_Always );
-
-        ImPlot::PlotLine ( "Curve", times.data ( ), values.data ( ), times.size ( ) );
-
-        hovered_point = -1;
-
-        for ( int i = 0; i < params.size ( ); ++i ) {
-            double y = 0.0;
-            double t = params [ i ].m_end_time_scaled;
-
-            if ( mode == 1 ) y = params [ i ].m_mtx [ 4 + channel ];
-            else if ( mode == 2 ) y = params [ i ].m_mtx [ 8 + channel ];
-
-            // Draw the drag point  
-            if ( ImPlot::DragPoint ( i, &t, &y, ImVec4 ( 1, 0.6f, 0, 1 ), 6 ) ) {
-                params [ i ].m_end_time_scaled = glm::clamp ( ( float ) t, 0.0f, 1.0f );
-                if ( mode == 1 ) params [ i ].m_mtx [ 4 + channel ] = ( float ) y;
-                if ( mode == 2 ) params [ i ].m_mtx [ 8 + channel ] = ( float ) y;
-            }
-
-            // Check if this point is hovered  
-            ImPlotPoint mouse_pos = ImPlot::GetPlotMousePos ( );
-            double dist_x = fabs ( mouse_pos.x - t );
-            double dist_y = fabs ( mouse_pos.y - y );
-
-            // FIX: Slightly increased threshold for better reliability (0.02 -> 0.03, 0.2 -> 0.3)
-            if ( dist_x < 0.03 && dist_y < 0.3 ) {
-                hovered_point = i;
-            }
-        }
-
-        // FIX: Reordered logic to prioritize the context menu over adding new points
-        if ( ImGui::IsMouseClicked ( ImGuiMouseButton_Right ) ) {
-            if ( hovered_point >= 0 ) {
-                // 1. If hovering a point, open the context menu
-                selected_point = hovered_point;
-                ImGui::OpenPopup ( "KeyframePopup" );
-            }
-            else if ( ImPlot::IsPlotHovered ( ) ) {
-                // 2. If NOT hovering a point but clicking the plot, add a new keyframe
-                ImPlotPoint mp = ImPlot::GetPlotMousePos ( );
-
-                int insert_pos = 0;
-                while ( insert_pos < params.size ( ) && mp.x > params [ insert_pos ].m_end_time_scaled ) {
-                    insert_pos++;
-                }
-
-                sparticle_element_param new_param;
-                if ( insert_pos > 0 ) {
-                    new_param = params [ insert_pos - 1 ];
-                }
-                else {
-                    new_param = default_element ( );
-                }
-
-                new_param.m_end_time_scaled = glm::clamp ( ( float ) mp.x, 0.0f, 1.0f );
-
-                if ( mode == 1 ) {
-                    new_param.m_mtx [ 4 + channel ] = ( float ) mp.y;
-                }
-                else if ( mode == 2 ) {
-                    new_param.m_mtx [ 8 + channel ] = ( float ) mp.y;
-                }
-
-                params.insert ( params.begin ( ) + insert_pos, new_param );
-                selected_point = insert_pos;
-            }
-        }
-
-        // Draw the context menu  
-        if ( ImGui::BeginPopup ( "KeyframePopup" ) ) {
-            if ( selected_point >= 0 && selected_point < params.size ( ) ) {
-                ImGui::Text ( "Keyframe %d", selected_point );
-                sparticle_element_param& param = params [ selected_point ];
-
-                ImGui::DragFloat ( "Time", &param.m_end_time_scaled, 0.001f, 0.0f, 1.0f );
-
-                if ( mode == 1 )
-                    ImGui::DragFloat ( "Velocity", &param.m_mtx [ 4 + channel ], 0.01f );
-                else if ( mode == 2 )
-                    ImGui::DragFloat ( "Acceleration", &param.m_mtx [ 8 + channel ], 0.01f );
-                else if ( mode == 0 && selected_point == 0 )
-                    ImGui::DragFloat4 ( "Base", param.m_mtx, 0.01f );
-
-                if ( ImGui::Button ( "Delete" ) && params.size ( ) > 1 ) {
-                    params.erase ( params.begin ( ) + selected_point );
-                    ensure_final_param ( params );
-                    ImGui::CloseCurrentPopup ( );
-                }
-
-                ImGui::SameLine ( );
-                if ( ImGui::Button ( "Duplicate" ) ) {
-                    sparticle_element_param dup = param;
-                    dup.m_end_time_scaled = glm::min ( dup.m_end_time_scaled + 0.1f, 1.0f );
-                    params.insert ( params.begin ( ) + selected_point + 1, dup );
-                    selected_point++;
-                    ImGui::CloseCurrentPopup ( );
-                }
-
-                if ( ImGui::Button ( "Close" ) ) {
-                    ImGui::CloseCurrentPopup ( );
-                }
-            }
-            ImGui::EndPopup ( );
-        }
-
-        ImPlot::EndPlot ( );
-    }
-
-    // Display selected keyframe info
-    if ( selected_point >= 0 && selected_point < params.size ( ) ) {
-        ImGui::Text ( "Selected Keyframe: %d (Time: %.3f)", selected_point, params [ selected_point ].m_end_time_scaled );
-    }
-
-    // Base edit (ONLY param 0)
-    if ( mode == 0 && ImGui::TreeNode ( "Base (Param 0 only)" ) ) {
-        ImGui::DragFloat4 (
-            "Base",
-            params [ 0 ].m_mtx,
-            0.01f
-        );
-        ImGui::TreePop ( );
-    }
-}
 
 static void texture_tooltip ( ctex_buffer* tex )
 {
@@ -1069,13 +1000,14 @@ void cgame::draw_ptcl_data ( ) {
                         ImGui::DragFloat4 ( "Scale Range", glm::value_ptr ( vtx.m_scale_range ), 0.01f );
 
                         ImGui::Separator ( );
-                        ImGui::DragFloat3 ( "Rot Base", glm::value_ptr ( vtx.m_rotation_base ) );
-                        ImGui::DragFloat3 ( "Rot Range", glm::value_ptr ( vtx.m_rotation_range ) );
+                        ImGui::DragFloat3 ( "Ang Base", glm::value_ptr ( vtx.m_rotation_base ) );
+                        ImGui::DragFloat3 ( "Ang Range", glm::value_ptr ( vtx.m_rotation_range ) );
                         ImGui::DragFloat3 ( "Ang Accel Base", glm::value_ptr ( vtx.m_angular_accel_base ) );
                         ImGui::DragFloat3 ( "Ang Accel Range", glm::value_ptr ( vtx.m_angular_accel_range ) );
 
                         ImGui::Separator ( );
                         ImGui::Text ( "UV & Frame" );
+                        ImGui::Combo ( "UV Type", &vtx.m_uv_flag, uv_type_names, IM_ARRAYSIZE ( uv_type_names ) );
                         ImGui::DragFloat2 ( "UV Base", glm::value_ptr ( vtx.m_uv_base ), 0.01f );
                         ImGui::DragFloat2 ( "UV Range", glm::value_ptr ( vtx.m_uv_range ), 0.01f );
                         ImGui::InputInt ( "Cols", &vtx.m_columns );
@@ -1132,7 +1064,17 @@ void cgame::draw_ptcl_data ( ) {
                                     }
                                 };
 
-                                draw_improved_curve_editor ( element );
+                                draw_param_curve_editor ( element, e_param );
+
+                                //for ( int z = 0; z < element.size ( ); z++ ) {
+                                //    if ( ImGui::BeginChild ( "Param" ) ) {
+                                //        if ( ImGui::Button ( "Delete" ) ) {
+                                //            element.erase ( element.begin ( ) + z );
+                                //        }
+                                //        ImGui::EndChild ( );
+                                //    }
+                                //}
+
                                 ImGui::TreePop ( );
                             }
 
@@ -1318,9 +1260,25 @@ void cgame::draw_pmm_data ( ) {
 
     ImGui::SameLine ( );
 
+    static bool follow_dummy = false;
+
+    ImGui::Checkbox ( "Follow", &follow_dummy );
+
+	cact_camera* cam = ( cact_camera* ) cengine::get ( )->act_man->get_actor ( e_actid::camera );
+
+    if ( follow_dummy ) {
+        cam->set_target ( d->m_animator->m_bones [ 1 ].m_anim_pos );
+    }
+    else {
+		cam->set_target ( glm::vec3 ( 0.0f ) );
+    }
+
+    ImGui::SameLine ( );
+
     if ( ImGui::Button ( "Exit" ) ) {
         d->set_exec_flag ( e_act_exec::pause );
         d->set_exec_flag ( e_act_exec::done );
+        follow_dummy = false;
         ImGui::End ( );
         return;
     }

@@ -49,34 +49,40 @@ void unswizzle16 ( unsigned char* palette )
     memcpy ( palette, temp, 16 * 4 );
 }
 
-std::vector<ctex_ref> read_ogre_tex_file ( const char* filename ) {
-	cbinary_helper bin_help = cbinary_helper ( filename );
-    std::string magic = bin_help.read_fixed_string ( 4 );
+std::vector<ctex_ref> read_ogre_tex_file ( const char* filename, cbinary_helper* curr_helper ) {
+    cbinary_helper* bin_help;
+
+    if ( curr_helper )
+        bin_help = curr_helper;
+    else
+        bin_help = new cbinary_helper ( filename );
+
+    std::string magic = bin_help->read_fixed_string ( 4 );
     if ( magic != "TXBP" ) {
         throw std::runtime_error ( "Invalid TXB file format" );
     }
 
     std::vector<ctex_ref> names;
 
-    int TextureCount = bin_help.read_uint ( );
-    bin_help.seek ( 0x20 );
+    int TextureCount = bin_help->read_uint ( );
+    bin_help->seek ( 0x20 );
     for ( unsigned int i = 0; i < TextureCount; ++i ) {
         std::string name = std::string ( filename ) + "_" + std::to_string ( i );
         names.push_back ( ctex_ref ( name ) );
         ctex_buffer* buffer = new ctex_buffer ( );
         buffer->m_name = name;
-        int size = bin_help.read_int ( );
+        int size = bin_help->read_int ( );
 
-        int res = bin_help.read_int ( );
+        int res = bin_help->read_int ( );
         buffer->m_width = res;
         buffer->m_height = res;
-        bin_help.read_int ( );
+        bin_help->read_int ( );
 
-        int format = bin_help.read_int ( );
-        bin_help.read_int ( );
-        bin_help.read_int ( );
-        bin_help.read_int ( );
-        bin_help.read_int ( );
+        int format = bin_help->read_int ( );
+        bin_help->read_int ( );
+        bin_help->read_int ( );
+        bin_help->read_int ( );
+        bin_help->read_int ( );
 
 
         if ( format == 0x15 )
@@ -87,15 +93,15 @@ std::vector<ctex_ref> read_ogre_tex_file ( const char* filename ) {
             unsigned char* Indices = new unsigned char [ buffer->m_width * buffer->m_height ];
             for ( int e = 0; e < 256 ; e++ )
             {
-                TexColors [ e * 4 ] = bin_help.read_uchar ( );
-                TexColors [ e * 4 + 1 ] = bin_help.read_uchar ( );
-                TexColors [ e * 4 + 2 ] = bin_help.read_uchar ( );
-                TexColors [ e * 4 + 3 ] = bin_help.read_uchar ( );
+                TexColors [ e * 4 ] = bin_help->read_uchar ( );
+                TexColors [ e * 4 + 1 ] = bin_help->read_uchar ( );
+                TexColors [ e * 4 + 2 ] = bin_help->read_uchar ( );
+                TexColors [ e * 4 + 3 ] = bin_help->read_uchar ( );
             }
             unswizzle ( TexColors );
             for ( int e = 0; e < buffer->m_width * buffer->m_height; e++ )
             {
-                unsigned char Index = bin_help.read_uchar ( );
+                unsigned char Index = bin_help->read_uchar ( );
                 Indices [ e ] = Index;
             }
             for ( int e = 0; e < buffer->m_width * buffer->m_height; e++  )
@@ -118,10 +124,10 @@ std::vector<ctex_ref> read_ogre_tex_file ( const char* filename ) {
             buffer->m_buffer = new unsigned char [ RealTexSize ];
 
             for ( int e = 0; e < 16; e++ ) {
-                TexColors [ e * 4 ] = bin_help.read_uchar ( );
-                TexColors [ e * 4 + 1 ] = bin_help.read_uchar ( );
-                TexColors [ e * 4 + 2 ] = bin_help.read_uchar ( );
-                TexColors [ e * 4 + 3 ] = bin_help.read_uchar ( );
+                TexColors [ e * 4 ] = bin_help->read_uchar ( );
+                TexColors [ e * 4 + 1 ] = bin_help->read_uchar ( );
+                TexColors [ e * 4 + 2 ] = bin_help->read_uchar ( );
+                TexColors [ e * 4 + 3 ] = bin_help->read_uchar ( );
             }
 
             unswizzle16 ( TexColors );
@@ -130,7 +136,7 @@ std::vector<ctex_ref> read_ogre_tex_file ( const char* filename ) {
             unsigned char* packedIndices = new unsigned char [ indexBufferSize ];
 
             for ( int e = 0; e < indexBufferSize; e++ ) {
-                packedIndices [ e ] = bin_help.read_uchar ( );
+                packedIndices [ e ] = bin_help->read_uchar ( );
             }
 
             for ( int e = 0; e < buffer->m_width * buffer->m_height; e++ ) {
@@ -161,6 +167,8 @@ std::vector<ctex_ref> read_ogre_tex_file ( const char* filename ) {
 
         buffer->init_buffer ( );
         cengine::get ( )->tex_man->regist_tex ( buffer );
+
+        if ( !curr_helper ) delete bin_help;
 
         return names;
     }
